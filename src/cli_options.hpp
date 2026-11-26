@@ -68,6 +68,12 @@ struct MultipleInputsPositional {
 };
 
 using SubcommandApp = rfl::cli::App<"", "", "", rfl::cli::BuiltinHelp::short_and_long>;
+using OsmiumCli = rfl::Processors<
+    SubcommandApp,
+    rfl::NoExtraFields,
+    rfl::cli::SeparateOptionValues,
+    rfl::cli::ListDelimiter<"">,
+    rfl::cli::PureFlags>;
 
 template <class Opts, class Cmd>
 std::optional<Opts> parse_command_options(const Cmd& cmd,
@@ -81,13 +87,7 @@ std::optional<Opts> parse_command_options(const Cmd& cmd,
         .help_group = "COMMON OPTIONS",
     };
 
-    const auto result = rfl::cli::read_app<
-        Opts,
-        SubcommandApp,
-        rfl::NoExtraFields,
-        rfl::cli::SeparateOptionValues,
-        rfl::cli::ListDelimiter<"">,
-        rfl::cli::PureFlags>(
+    const auto result = rfl::cli::read_app<Opts, OsmiumCli>(
         std::string{"osmium "} + cmd.name(),
         arguments,
         usage_opts);
