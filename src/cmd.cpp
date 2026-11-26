@@ -125,6 +125,74 @@ void Command::setup_object_type_nwr(const boost::program_options::variables_map&
     }
 }
 
+void Command::setup_common(const osmium_cli::CommonOptions& opts) {
+    if (rfl::unwrap(opts.verbose)) {
+        m_vout.verbose(true);
+    }
+
+    const bool progress = rfl::unwrap(opts.progress);
+    const bool no_progress = rfl::unwrap(opts.no_progress);
+    if (progress && no_progress) {
+        throw argument_error{"Can not use --progress and --no-progress together."};
+    }
+
+    if (progress) {
+        m_display_progress = display_progress_type::always;
+    }
+
+    if (no_progress) {
+        m_display_progress = display_progress_type::never;
+    }
+}
+
+void Command::setup_common(const osmium_cli::CommonOptionsNoProgress& opts) {
+    if (rfl::unwrap(opts.verbose)) {
+        m_vout.verbose(true);
+    }
+}
+
+void Command::setup_object_type_nwrc(const std::optional<std::vector<std::string>>& types) {
+    if (types) {
+        m_osm_entity_bits = osmium::osm_entity_bits::nothing;
+        for (const auto& t : *types) {
+            if (t == "n" || t == "node") {
+                m_osm_entity_bits |= osmium::osm_entity_bits::node;
+            } else if (t == "w" || t == "way") {
+                m_osm_entity_bits |= osmium::osm_entity_bits::way;
+            } else if (t == "r" || t == "relation") {
+                m_osm_entity_bits |= osmium::osm_entity_bits::relation;
+            } else if (t == "c" || t == "changeset") {
+                m_osm_entity_bits |= osmium::osm_entity_bits::changeset;
+            } else {
+                throw argument_error{std::string{"Unknown object type '"}
+                                     + t
+                                     + "' (Allowed are 'node', 'way', 'relation', and 'changeset')."};
+            }
+        }
+    } else {
+        m_osm_entity_bits = osmium::osm_entity_bits::all;
+    }
+}
+
+void Command::setup_object_type_nwr(const std::optional<std::vector<std::string>>& types) {
+    if (types) {
+        m_osm_entity_bits = osmium::osm_entity_bits::nothing;
+        for (const auto& t : *types) {
+            if (t == "n" || t == "node") {
+                m_osm_entity_bits |= osmium::osm_entity_bits::node;
+            } else if (t == "w" || t == "way") {
+                m_osm_entity_bits |= osmium::osm_entity_bits::way;
+            } else if (t == "r" || t == "relation") {
+                m_osm_entity_bits |= osmium::osm_entity_bits::relation;
+            } else {
+                throw argument_error{std::string{"Unknown object type '"} + t + "' (Allowed are 'node', 'way', and 'relation')."};
+            }
+        }
+    } else {
+        m_osm_entity_bits = osmium::osm_entity_bits::nwr;
+    }
+}
+
 void Command::show_object_types(osmium::VerboseOutput& vout) {
     vout << "    object types:";
     if (osm_entity_bits() & osmium::osm_entity_bits::node) {

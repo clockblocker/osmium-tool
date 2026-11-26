@@ -40,8 +40,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/osm/item_type.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -49,83 +47,71 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <string>
 #include <vector>
 
+namespace {
+
+struct DiffOptions {
+    osmium_cli::CmdOpt<"Ignore changeset id when comparing objects", osmium_cli::Flag> ignore_changeset = false;
+    osmium_cli::CmdOpt<"Ignore user id when comparing objects", osmium_cli::Flag> ignore_uid = false;
+    osmium_cli::CmdOpt<"Ignore user name when comparing objects", osmium_cli::Flag> ignore_user = false;
+    osmium_cli::CmdShortOpt<"t", "Read only objects of given type (node, way, relation)", osmium_cli::OptStrVec> object_type;
+    osmium_cli::CmdShortOpt<"o", "Output file", osmium_cli::OptStr> output;
+    osmium_cli::CmdShortOpt<"f", "Format of output file", osmium_cli::OptStr> output_format;
+    osmium_cli::CmdShortOpt<"O", "Allow existing output file to be overwritten", osmium_cli::Flag> overwrite = false;
+    osmium_cli::CmdShortOpt<"q", "Report only when files differ", osmium_cli::Flag> quiet = false;
+    osmium_cli::CmdShortOpt<"s", "Show summary on STDERR", osmium_cli::Flag> summary = false;
+    osmium_cli::CmdShortOpt<"c", "Suppress common objects", osmium_cli::Flag> suppress_common = false;
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::MultipleInputsOptions> input;
+    rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandDiff::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("ignore-changeset", "Ignore changeset id when comparing objects")
-    ("ignore-uid", "Ignore user id when comparing objects")
-    ("ignore-user", "Ignore user name when comparing objects")
-    ("object-type,t", po::value<std::vector<std::string>>(), "Read only objects of given type (node, way, relation)")
-    ("output,o", po::value<std::string>(), "Output file")
-    ("output-format,f", po::value<std::string>(), "Format of output file")
-    ("overwrite,O", "Allow existing output file to be overwritten")
-    ("quiet,q", "Report only when files differ")
-    ("summary,s", "Show summary on STDERR")
-    ("suppress-common,c", "Suppress common objects")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_multiple_inputs_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filenames", po::value<std::vector<std::string>>(), "Input files")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filenames", -1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<DiffOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_object_type_nwr(vm);
-    setup_input_files(vm);
+
+    setup_common(opts->common());
+    setup_object_type_nwr(rfl::unwrap(opts->object_type));
+    setup_input_files(opts->input(), rfl::unwrap(opts->positionals().input_filenames));
 
     if (m_input_files.size() != 2) {
         throw argument_error("You need exactly two input files for this command.");
     }
 
-    if (vm.count("ignore-changeset")) {
+    if (rfl::unwrap(opts->ignore_changeset)) {
         m_ignore_attrs_changeset = true;
     }
 
-    if (vm.count("ignore-uid")) {
+    if (rfl::unwrap(opts->ignore_uid)) {
         m_ignore_attrs_uid = true;
     }
 
-    if (vm.count("ignore-user")) {
+    if (rfl::unwrap(opts->ignore_user)) {
         m_ignore_attrs_user = true;
     }
 
-    if (vm.count("output")) {
-        m_output_filename = vm["output"].as<std::string>();
+    if (const auto& out = rfl::unwrap(opts->output)) {
+        m_output_filename = *out;
     }
 
-    if (vm.count("output-format")) {
-        m_output_format = vm["output-format"].as<std::string>();
+    if (const auto& fmt = rfl::unwrap(opts->output_format)) {
+        m_output_format = *fmt;
     }
 
-    if (vm.count("overwrite")) {
+    if (rfl::unwrap(opts->overwrite)) {
         m_output_overwrite = osmium::io::overwrite::allow;
     }
 
-    if (vm.count("summary")) {
+    if (rfl::unwrap(opts->summary)) {
         m_show_summary = true;
     }
 
-    if (vm.count("quiet")) {
-        if (vm.count("output") || vm.count("output-format") || vm.count("overwrite") || vm.count("suppress-common")) {
+    if (rfl::unwrap(opts->quiet)) {
+        if (rfl::unwrap(opts->output) || rfl::unwrap(opts->output_format) ||
+            rfl::unwrap(opts->overwrite) || rfl::unwrap(opts->suppress_common)) {
             throw argument_error("Do not use --quiet/-q with any of the output options.");
         }
         m_output_action = "none";
@@ -164,7 +150,7 @@ bool CommandDiff::setup(const std::vector<std::string>& arguments) {
         }
     }
 
-    if (vm.count("suppress-common")) {
+    if (rfl::unwrap(opts->suppress_common)) {
         m_suppress_common = true;
     }
 

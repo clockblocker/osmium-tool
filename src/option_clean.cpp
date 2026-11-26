@@ -32,7 +32,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 void OptionClean::setup(const boost::program_options::variables_map& vm) {
     if (vm.count("clean")) {
-        for (const auto& c : vm["clean"].as<std::vector<std::string>>()) {
+        setup(std::optional<std::vector<std::string>>{vm["clean"].as<std::vector<std::string>>()});
+    }
+}
+
+void OptionClean::setup(const std::optional<std::vector<std::string>>& clean_attrs) {
+    if (clean_attrs) {
+        for (const auto& c : *clean_attrs) {
             if (c == "version") {
                 m_clean_attrs |= clean_options::clean_version;
             } else if (c == "changeset") {

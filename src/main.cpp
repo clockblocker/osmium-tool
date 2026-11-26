@@ -21,6 +21,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 #include "cmd.hpp"
+#include "exception.hpp"
 
 #include <osmium/geom/factory.hpp>
 #include <osmium/handler/check_order.hpp>
@@ -117,6 +118,9 @@ int main(int argc, char* argv[]) {
         if (!cmd->setup(arguments)) {
             return return_code::okay;
         }
+    } catch (const cli_parse_error& e) {
+        std::cerr << "Error parsing command line: " << e.what() << '\n';
+        return return_code::fatal;
     } catch (const boost::program_options::error& e) {
         std::cerr << "Error parsing command line: " << e.what() << '\n';
         return return_code::fatal;

@@ -38,65 +38,50 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/osm/timestamp.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <algorithm>
 #include <ctime>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+namespace {
+
+struct TimeFilterOptions {
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> input_filename;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> time_from;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> time_to;
+};
+
+} // anonymous namespace
+
 bool CommandTimeFilter::setup(const std::vector<std::string>& arguments) {
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "OSM input file")
-    ("time-from", po::value<std::string>(), "Start of time range")
-    ("time-to", po::value<std::string>(), "End of time range")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-    positional.add("time-from", 1);
-    positional.add("time-to", 1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<TimeFilterOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_input_file(vm);
-    setup_output_file(vm);
+
+    setup_common(opts->common());
+    setup_input_file(opts->input(), rfl::unwrap(opts->input_filename));
+    setup_output_file(opts->output());
 
     m_from = osmium::Timestamp{std::time(nullptr)};
     m_to = m_from;
 
-    if (vm.count("time-from")) {
-        const auto ts = vm["time-from"].as<std::string>();
+    if (const auto& ts = rfl::unwrap(opts->time_from)) {
         try {
-            m_from = osmium::Timestamp{ts};
+            m_from = osmium::Timestamp{*ts};
         } catch (const std::invalid_argument&) {
             throw argument_error{"Wrong format for (first) timestamp (use YYYY-MM-DDThh:mm:ssZ)."};
         }
         m_to = m_from;
     }
 
-    if (vm.count("time-to")) {
-        const auto ts = vm["time-to"].as<std::string>();
+    if (const auto& ts = rfl::unwrap(opts->time_to)) {
         try {
-            m_to = osmium::Timestamp{ts};
+            m_to = osmium::Timestamp{*ts};
         } catch (const std::invalid_argument&) {
             throw argument_error{"Wrong format for second timestamp (use YYYY-MM-DDThh:mm:ssZ)."};
         }

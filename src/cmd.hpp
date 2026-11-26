@@ -23,6 +23,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 */
 
+#include "cli_options.hpp"
 #include "option_clean.hpp"
 
 #include <osmium/io/file.hpp>
@@ -114,6 +115,14 @@ public:
     void setup_progress(const boost::program_options::variables_map& vm);
     void setup_object_type_nwrc(const boost::program_options::variables_map& vm);
     void setup_object_type_nwr(const boost::program_options::variables_map& vm);
+
+    template <class Opts>
+    std::optional<Opts> parse_options(const std::vector<std::string>& arguments) const;
+
+    void setup_common(const osmium_cli::CommonOptions& opts);
+    void setup_common(const osmium_cli::CommonOptionsNoProgress& opts);
+    void setup_object_type_nwrc(const std::optional<std::vector<std::string>>& types);
+    void setup_object_type_nwr(const std::optional<std::vector<std::string>>& types);
     void show_object_types(osmium::VerboseOutput& vout);
     void print_arguments(const std::string& command);
     void show_memory_used();
@@ -147,6 +156,7 @@ protected:
 public:
 
     void setup_input_file(const boost::program_options::variables_map& vm);
+    void setup_input_file(const osmium_cli::SingleInputOptions& opts, const std::optional<std::string>& filename);
 
     static po::options_description add_single_input_options();
 
@@ -174,6 +184,7 @@ protected:
 public:
 
     void setup_input_files(const boost::program_options::variables_map& vm);
+    void setup_input_files(const osmium_cli::MultipleInputsOptions& opts, const std::optional<std::vector<std::string>>& filenames);
 
     static po::options_description add_multiple_inputs_options();
 
@@ -243,8 +254,10 @@ public:
     }
 
     void init_output_file(const po::variables_map& vm);
+    void init_output_file(const osmium_cli::OutputOptions& opts);
     void check_output_file();
     void setup_output_file(const po::variables_map& vm);
+    void setup_output_file(const osmium_cli::OutputOptions& opts);
 
     static po::options_description add_output_options();
 
@@ -298,6 +311,11 @@ public:
     std::unique_ptr<Command> create_command(const std::string& name) const;
 
 }; // class CommandFactory
+
+template <class Opts>
+std::optional<Opts> Command::parse_options(const std::vector<std::string>& arguments) const {
+    return osmium_cli::parse_command_options<Opts>(*this, m_command_factory.get_description(name()), arguments);
+}
 
 void register_commands(CommandFactory& cmd_factory);
 std::string check_index_type(const std::string& index_type_name, bool allow_none = false);

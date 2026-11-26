@@ -27,7 +27,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <boost/program_options.hpp>
 
+#include <optional>
 #include <string>
+#include <vector>
 
 class OptionClean {
     enum clean_options : uint8_t {
@@ -46,6 +48,7 @@ public:
     OptionClean() = default;
 
     void setup(const boost::program_options::variables_map& vm);
+    void setup(const std::optional<std::vector<std::string>>& clean_attrs);
 
     void apply_to(osmium::memory::Buffer& buffer) const {
         if (m_clean_attrs) {

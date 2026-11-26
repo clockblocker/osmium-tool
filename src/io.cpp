@@ -60,6 +60,31 @@ void with_single_osm_input::setup_input_file(const boost::program_options::varia
     m_input_file = osmium::io::File{m_input_filename, m_input_format};
 }
 
+void with_single_osm_input::setup_input_file(const osmium_cli::SingleInputOptions& opts,
+                                             const std::optional<std::string>& filename) {
+    if (filename) {
+        m_input_filename = *filename;
+    }
+
+    if (const auto& fmt = rfl::unwrap(opts.input_format)) {
+        m_input_format = *fmt;
+    }
+
+    if (m_input_format.empty()) {
+        if (m_input_filename == "-") {
+            throw argument_error{"When reading from STDIN you need to use the --input-format/-F option\n"
+                                 "to specify the file format."};
+        }
+
+        if (m_input_filename.empty()) {
+            throw argument_error{"Missing input file. Use '-' to read from STDIN and add the --input-format/-F\n"
+                                 "option to specify the file format or specify the input file name."};
+        }
+    }
+
+    m_input_file = osmium::io::File{m_input_filename, m_input_format};
+}
+
 po::options_description with_single_osm_input::add_single_input_options() {
     po::options_description options{"INPUT OPTIONS"};
 
@@ -95,6 +120,39 @@ void with_multiple_osm_inputs::setup_input_files(const boost::program_options::v
 
     if (vm.count("input-format")) {
         m_input_format = vm["input-format"].as<std::string>();
+    }
+
+    if (uses_stdin && m_input_format.empty()) {
+        throw argument_error{"When reading from STDIN you need to use the --input-format/-F option\n"
+                             "to specify the file format. Or are you missing a file name argument?"};
+    }
+
+    for (const std::string& input_filename : m_input_filenames) {
+        const osmium::io::File input_file{input_filename, m_input_format};
+        m_input_files.push_back(input_file);
+    }
+}
+
+void with_multiple_osm_inputs::setup_input_files(const osmium_cli::MultipleInputsOptions& opts,
+                                                 const std::optional<std::vector<std::string>>& filenames) {
+    if (filenames) {
+        m_input_filenames = *filenames;
+    } else {
+        m_input_filenames.emplace_back("-"); // default is stdin
+    }
+
+    bool uses_stdin = false;
+    for (const auto& filename : m_input_filenames) {
+        if (filename == "-") {
+            if (uses_stdin) {
+                throw argument_error{"Can read at most one file from STDIN."};
+            }
+            uses_stdin = true;
+        }
+    }
+
+    if (const auto& fmt = rfl::unwrap(opts.input_format)) {
+        m_input_format = *fmt;
     }
 
     if (uses_stdin && m_input_format.empty()) {
@@ -172,6 +230,37 @@ void with_osm_output::check_output_file() {
 
 void with_osm_output::setup_output_file(const po::variables_map& vm) {
     init_output_file(vm);
+    check_output_file();
+}
+
+void with_osm_output::init_output_file(const osmium_cli::OutputOptions& opts) {
+    if (const auto& gen = rfl::unwrap(opts.generator)) {
+        m_generator = *gen;
+    }
+
+    if (const auto& out = rfl::unwrap(opts.output)) {
+        m_output_filename = *out;
+    }
+
+    if (const auto& fmt = rfl::unwrap(opts.output_format)) {
+        m_output_format = *fmt;
+    }
+
+    if (const auto& hdrs = rfl::unwrap(opts.output_header)) {
+        m_output_headers = *hdrs;
+    }
+
+    if (rfl::unwrap(opts.overwrite)) {
+        m_output_overwrite = osmium::io::overwrite::allow;
+    }
+
+    if (rfl::unwrap(opts.fsync)) {
+        m_fsync = osmium::io::fsync::yes;
+    }
+}
+
+void with_osm_output::setup_output_file(const osmium_cli::OutputOptions& opts) {
+    init_output_file(opts);
     check_output_file();
 }
 
