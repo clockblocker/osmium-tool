@@ -146,7 +146,10 @@ bool CommandMergeChanges::run() {
         m_vout << "Sorting change data...\n";
         objects.sort(osmium::object_order_type_id_version());
         m_vout << "Writing all objects to output...\n";
-        std::copy(objects.cbegin(), objects.cend(), out);
+        for (const auto& obj : objects) {
+            *out = obj;
+            ++out;
+        }
     }
 
     m_vout << "Closing output file...\n";

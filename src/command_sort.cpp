@@ -158,7 +158,10 @@ bool CommandSort::run_single_pass() {
 
     m_vout << "Writing out sorted data...\n";
     auto out = osmium::io::make_output_iterator(writer);
-    std::copy(objects.begin(), objects.end(), out);
+    for (const auto& obj : objects) {
+        *out = obj;
+        ++out;
+    }
 
     m_vout << "Closing output file...\n";
     writer.close();
@@ -239,7 +242,10 @@ bool CommandSort::run_multi_pass() {
 
         m_vout << "Writing out sorted data...\n";
         auto out = osmium::io::make_output_iterator(writer);
-        std::copy(objects.begin(), objects.end(), out);
+        for (const auto& obj : objects) {
+            *out = obj;
+            ++out;
+        }
     }
 
     progress_bar.done();

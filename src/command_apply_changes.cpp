@@ -197,6 +197,31 @@ void update_nodes_if_way(osmium::OSMObject* object, const location_index_type& l
     }
 }
 
+// AppleClang 17 libc++'s std::__unwrap_iter unwraps osmium::indirect_iterator
+// (which publicly inherits std::vector::iterator) and fails to rewrap it.
+template <typename PtrIt>
+struct deref_obj_iter {
+    using iterator_category = std::forward_iterator_tag;
+    using value_type        = osmium::OSMObject;
+    using difference_type   = std::ptrdiff_t;
+    using pointer           = const osmium::OSMObject*;
+    using reference         = const osmium::OSMObject&;
+
+    PtrIt it;
+
+    reference operator*() const noexcept { return **it; }
+    pointer operator->() const noexcept { return *it; }
+    deref_obj_iter& operator++() noexcept { ++it; return *this; }
+    deref_obj_iter operator++(int) noexcept { auto tmp = *this; ++it; return tmp; }
+    bool operator==(const deref_obj_iter& rhs) const noexcept { return it == rhs.it; }
+    bool operator!=(const deref_obj_iter& rhs) const noexcept { return it != rhs.it; }
+};
+
+template <typename PtrIt>
+deref_obj_iter<PtrIt> make_deref_obj_iter(PtrIt it) noexcept {
+    return deref_obj_iter<PtrIt>{it};
+}
+
 } // anonymous namespace
 
 void CommandApplyChanges::apply_changes_and_write(osmium::ObjectPointerCollection &objects,
@@ -325,15 +350,15 @@ bool CommandApplyChanges::run() {
         auto out = osmium::io::make_output_iterator(writer);
 
         if (m_redact) {
-            std::set_union(objects.begin(),
-                           objects.end(),
+            std::set_union(make_deref_obj_iter(objects.ptr_begin()),
+                           make_deref_obj_iter(objects.ptr_end()),
                            input.begin(),
                            input.end(),
                            out,
                            osmium::object_order_type_id_version_without_timestamp());
         } else {
-            std::set_union(objects.begin(),
-                           objects.end(),
+            std::set_union(make_deref_obj_iter(objects.ptr_begin()),
+                           make_deref_obj_iter(objects.ptr_end()),
                            input.begin(),
                            input.end(),
                            out);
@@ -362,8 +387,8 @@ bool CommandApplyChanges::run() {
             copy_first_with_id copy_first{&writer};
             auto output_it = std::back_inserter(copy_first);
 
-            std::set_union(objects.begin(),
-                           objects.end(),
+            std::set_union(make_deref_obj_iter(objects.ptr_begin()),
+                           make_deref_obj_iter(objects.ptr_end()),
                            input.begin(),
                            input.end(),
                            output_it,
