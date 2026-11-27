@@ -53,9 +53,9 @@ struct AddLocationsToWaysOptions {
     osmium_cli::CmdOpt<"Keep node members of relations", osmium_cli::Flag> keep_member_nodes = false;
     osmium_cli::CmdShortOpt<"n", "Keep untagged nodes", osmium_cli::Flag> keep_untagged_nodes = false;
     osmium_cli::CmdOpt<"Ignore missing nodes", osmium_cli::Flag> ignore_missing_nodes = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::MultipleInputsOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::MultipleInputsOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
 };
 

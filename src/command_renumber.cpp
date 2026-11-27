@@ -185,9 +185,9 @@ struct RenumberOptions {
     osmium_cli::CmdShortOpt<"t", "Renumber only objects of given type (node, way, relation)", osmium_cli::OptStrVec> object_type;
     osmium_cli::CmdOpt<"Show contents of index file", osmium_cli::OptStr> show_index;
     osmium_cli::CmdShortOpt<"s", "Comma separated list of first node, way, and relation id to use (default: 1,1,1)", osmium_cli::OptStr> start_id;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
 };
 

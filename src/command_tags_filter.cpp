@@ -90,9 +90,9 @@ struct TagsFilterOptions {
     osmium_cli::CmdShortOpt<"i", "Invert the sense of matching, exclude objects with matching tags", osmium_cli::Flag> invert_match = false;
     osmium_cli::CmdShortOpt<"R", "Omit referenced objects", osmium_cli::Flag> omit_referenced = false;
     osmium_cli::CmdShortOpt<"t", "Remove tags from non-matching objects", osmium_cli::Flag> remove_tags = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> input_filename;
     rfl::Hidden<rfl::Positional<osmium_cli::OptStrVec>> expression_list;
 };

@@ -16,11 +16,13 @@
 namespace osmium_cli {
 
 template <rfl::internal::StringLiteral GroupName, rfl::internal::StringLiteral Desc, class T>
-using Opt = rfl::Group<GroupName, rfl::Description<Desc, T>>;
+using Opt = rfl::cli::Opt<T, rfl::cli::attr::Group<GroupName>, rfl::cli::attr::Desc<Desc>>;
 
 template <rfl::internal::StringLiteral GroupName, rfl::internal::StringLiteral ShortName,
           rfl::internal::StringLiteral Desc, class T>
-using ShortOpt = rfl::Group<GroupName, rfl::Short<ShortName, rfl::Description<Desc, T>>>;
+using ShortOpt = rfl::cli::Opt<T, rfl::cli::attr::Group<GroupName>,
+                               rfl::cli::attr::Short<ShortName>,
+                               rfl::cli::attr::Desc<Desc>>;
 
 template <rfl::internal::StringLiteral Desc, class T>
 using CmdOpt = Opt<"COMMAND OPTIONS", Desc, T>;
@@ -28,52 +30,50 @@ using CmdOpt = Opt<"COMMAND OPTIONS", Desc, T>;
 template <rfl::internal::StringLiteral ShortName, rfl::internal::StringLiteral Desc, class T>
 using CmdShortOpt = ShortOpt<"COMMAND OPTIONS", ShortName, Desc, T>;
 
-using Flag = rfl::DefaultVal<bool>;
+using Flag = bool;
 using OptStr = std::optional<std::string>;
 using OptStrVec = std::optional<std::vector<std::string>>;
 
 struct CommonOptionsNoProgress {
-    ShortOpt<"COMMON OPTIONS", "v", "Set verbose mode", Flag> verbose = false;
+    rfl::cli::Flag<rfl::cli::attr::Short<"v">, rfl::cli::attr::Desc<"Set verbose mode">> verbose = false;
 };
 
 struct CommonOptions {
-    ShortOpt<"COMMON OPTIONS", "v", "Set verbose mode", Flag> verbose = false;
-    Opt<"COMMON OPTIONS", "Display progress bar", Flag> progress = false;
-    Opt<"COMMON OPTIONS", "Suppress display of progress bar", Flag> no_progress = false;
+    rfl::cli::Flag<rfl::cli::attr::Short<"v">, rfl::cli::attr::Desc<"Set verbose mode">> verbose = false;
+    rfl::cli::Flag<rfl::cli::attr::Desc<"Display progress bar">> progress = false;
+    rfl::cli::Flag<rfl::cli::attr::Desc<"Suppress display of progress bar">> no_progress = false;
 };
 
 struct SingleInputOptions {
-    ShortOpt<"INPUT OPTIONS", "F", "Format of input file", OptStr> input_format;
+    rfl::cli::Arg<OptStr, rfl::cli::attr::Short<"F">, rfl::cli::attr::Desc<"Format of input file">> input_format;
 };
 
 struct MultipleInputsOptions {
-    ShortOpt<"INPUT OPTIONS", "F", "Format of input files", OptStr> input_format;
+    rfl::cli::Arg<OptStr, rfl::cli::attr::Short<"F">, rfl::cli::attr::Desc<"Format of input files">> input_format;
 };
 
 struct OutputOptions {
-    ShortOpt<"OUTPUT OPTIONS", "f", "Format of output file", OptStr> output_format;
-    Opt<"OUTPUT OPTIONS", "Call fsync after writing file", Flag> fsync = false;
-    Opt<"OUTPUT OPTIONS", "Generator setting for file header", OptStr> generator;
-    ShortOpt<"OUTPUT OPTIONS", "o", "Output file", OptStr> output;
-    ShortOpt<"OUTPUT OPTIONS", "O", "Allow existing output file to be overwritten", Flag> overwrite = false;
-    Opt<"OUTPUT OPTIONS", "Add output header", OptStrVec> output_header;
+    rfl::cli::Arg<OptStr, rfl::cli::attr::Short<"f">, rfl::cli::attr::Desc<"Format of output file">> output_format;
+    rfl::cli::Flag<rfl::cli::attr::Desc<"Call fsync after writing file">> fsync = false;
+    rfl::cli::Arg<OptStr, rfl::cli::attr::Desc<"Generator setting for file header">> generator;
+    rfl::cli::Arg<OptStr, rfl::cli::attr::Short<"o">, rfl::cli::attr::Desc<"Output file">> output;
+    rfl::cli::Flag<rfl::cli::attr::Short<"O">, rfl::cli::attr::Desc<"Allow existing output file to be overwritten">> overwrite = false;
+    rfl::cli::Arg<OptStrVec, rfl::cli::attr::Desc<"Add output header">> output_header;
 };
 
 struct SingleInputPositional {
-    rfl::Hidden<rfl::Positional<OptStr>> input_filename;
+    rfl::cli::Arg<OptStr, rfl::cli::attr::Positional, rfl::cli::attr::Hidden> input_filename;
 };
 
 struct MultipleInputsPositional {
-    rfl::Hidden<rfl::Positional<OptStrVec>> input_filenames;
+    rfl::cli::Arg<OptStrVec, rfl::cli::attr::Positional, rfl::cli::attr::Hidden> input_filenames;
 };
 
 using SubcommandApp = rfl::cli::App<"", "", "", rfl::cli::BuiltinHelp::short_and_long>;
 using OsmiumCli = rfl::Processors<
     SubcommandApp,
-    rfl::NoExtraFields,
-    rfl::cli::SeparateOptionValues,
-    rfl::cli::ListDelimiter<"">,
-    rfl::cli::PureFlags>;
+    rfl::cli::GnuStyle,
+    rfl::cli::ListDelimiter<"">>;
 
 template <class Opts, class Cmd>
 std::optional<Opts> parse_command_options(const Cmd& cmd,

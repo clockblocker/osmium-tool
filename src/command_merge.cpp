@@ -51,9 +51,9 @@ namespace {
 
 struct MergeOptions {
     osmium_cli::CmdShortOpt<"H", "Do not warn about input files with multiple object versions", osmium_cli::Flag> with_history = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::MultipleInputsOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::MultipleInputsOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
 };
 

@@ -48,8 +48,8 @@ namespace {
 struct CheckRefsOptions {
     osmium_cli::CmdShortOpt<"i", "Show IDs of missing objects", osmium_cli::Flag> show_ids = false;
     osmium_cli::CmdShortOpt<"r", "Also check relations", osmium_cli::Flag> check_relations = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
     rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
 };
 

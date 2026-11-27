@@ -59,9 +59,9 @@ struct GetIdOptions {
     osmium_cli::CmdShortOpt<"r", "Recursively add referenced objects", osmium_cli::Flag> add_referenced = false;
     osmium_cli::CmdShortOpt<"t", "Remove tags from objects not explicitly requested", osmium_cli::Flag> remove_tags = false;
     osmium_cli::CmdOpt<"Print all requested and missing IDs", osmium_cli::Flag> verbose_ids = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> input_filename;
     rfl::Hidden<rfl::Positional<osmium_cli::OptStrVec>> ids;
 };

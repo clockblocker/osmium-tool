@@ -454,9 +454,9 @@ struct ExtractOptions {
     osmium_cli::CmdShortOpt<"H", "Input file and output files are history files", osmium_cli::Flag> with_history = false;
     osmium_cli::CmdOpt<"Sets bounds (bounding box) in header", osmium_cli::Flag> set_bounds = false;
     osmium_cli::CmdOpt<"Clean attribute (version, changeset, timestamp, uid, user)", osmium_cli::OptStrVec> clean;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
 };
 

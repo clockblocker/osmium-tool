@@ -74,8 +74,8 @@ struct ShowOptions {
 #endif
     osmium_cli::CmdShortOpt<"t", "Read only objects of given type (node, way, relation, changeset)", osmium_cli::OptStrVec> object_type;
     osmium_cli::CmdShortOpt<"f", "Format of output file", osmium_cli::OptStr> output_format;
-    rfl::Flatten<osmium_cli::CommonOptionsNoProgress> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptionsNoProgress> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
     rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
 };
 

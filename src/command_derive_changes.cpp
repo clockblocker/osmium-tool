@@ -47,9 +47,9 @@ struct DeriveChangesOptions {
     osmium_cli::CmdOpt<"Increment version of deleted objects", osmium_cli::Flag> increment_version = false;
     osmium_cli::CmdOpt<"Keep tags (and nodes of ways, members of relations) of deleted objects", osmium_cli::Flag> keep_details = false;
     osmium_cli::CmdOpt<"Set timestamp of deleted objects to current time", osmium_cli::Flag> update_timestamp = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::MultipleInputsOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::MultipleInputsOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
 };
 

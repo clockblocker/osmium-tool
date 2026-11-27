@@ -40,8 +40,8 @@ void with_single_osm_input::setup_input_file(const osmium_cli::SingleInputOption
         m_input_filename = *filename;
     }
 
-    if (const auto& fmt = rfl::unwrap(opts.input_format)) {
-        m_input_format = *fmt;
+    if (opts.input_format) {
+        m_input_format = **opts.input_format;
     }
 
     if (m_input_format.empty()) {
@@ -83,8 +83,8 @@ void with_multiple_osm_inputs::setup_input_files(const osmium_cli::MultipleInput
         }
     }
 
-    if (const auto& fmt = rfl::unwrap(opts.input_format)) {
-        m_input_format = *fmt;
+    if (opts.input_format) {
+        m_input_format = **opts.input_format;
     }
 
     if (uses_stdin && m_input_format.empty()) {
@@ -125,27 +125,27 @@ void with_osm_output::check_output_file() {
 }
 
 void with_osm_output::init_output_file(const osmium_cli::OutputOptions& opts) {
-    if (const auto& gen = rfl::unwrap(opts.generator)) {
-        m_generator = *gen;
+    if (opts.generator) {
+        m_generator = **opts.generator;
     }
 
-    if (const auto& out = rfl::unwrap(opts.output)) {
-        m_output_filename = *out;
+    if (opts.output) {
+        m_output_filename = **opts.output;
     }
 
-    if (const auto& fmt = rfl::unwrap(opts.output_format)) {
-        m_output_format = *fmt;
+    if (opts.output_format) {
+        m_output_format = **opts.output_format;
     }
 
-    if (const auto& hdrs = rfl::unwrap(opts.output_header)) {
-        m_output_headers = *hdrs;
+    if (opts.output_header) {
+        m_output_headers = **opts.output_header;
     }
 
-    if (rfl::unwrap(opts.overwrite)) {
+    if (opts.overwrite) {
         m_output_overwrite = osmium::io::overwrite::allow;
     }
 
-    if (rfl::unwrap(opts.fsync)) {
+    if (opts.fsync) {
         m_fsync = osmium::io::fsync::yes;
     }
 }

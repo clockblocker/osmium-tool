@@ -36,12 +36,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <vector>
 
 void Command::setup_common(const osmium_cli::CommonOptions& opts) {
-    if (rfl::unwrap(opts.verbose)) {
+    if (opts.verbose) {
         m_vout.verbose(true);
     }
 
-    const bool progress = rfl::unwrap(opts.progress);
-    const bool no_progress = rfl::unwrap(opts.no_progress);
+    const bool progress = *opts.progress;
+    const bool no_progress = *opts.no_progress;
     if (progress && no_progress) {
         throw argument_error{"Can not use --progress and --no-progress together."};
     }
@@ -56,7 +56,7 @@ void Command::setup_common(const osmium_cli::CommonOptions& opts) {
 }
 
 void Command::setup_common(const osmium_cli::CommonOptionsNoProgress& opts) {
-    if (rfl::unwrap(opts.verbose)) {
+    if (opts.verbose) {
         m_vout.verbose(true);
     }
 }

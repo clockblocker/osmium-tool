@@ -46,9 +46,9 @@ namespace {
 
 struct MergeChangesOptions {
     osmium_cli::CmdShortOpt<"s", "Simplify change", osmium_cli::Flag> simplify = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::MultipleInputsOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::MultipleInputsOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
 };
 

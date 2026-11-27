@@ -667,8 +667,8 @@ struct FileinfoOptions {
     osmium_cli::CmdShortOpt<"c", "Calculate CRC", osmium_cli::Flag> crc = false;
     osmium_cli::CmdOpt<"Do not calculate CRC", osmium_cli::Flag> no_crc = false;
     osmium_cli::CmdShortOpt<"t", "Read only objects of given type (node, way, relation, changeset)", osmium_cli::OptStrVec> object_type;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
     rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
 };
 

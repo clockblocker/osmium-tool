@@ -46,8 +46,8 @@ namespace {
 struct QueryLocationsIndexOptions {
     osmium_cli::CmdShortOpt<"i", "Index file name (required)", osmium_cli::OptStr> index_file;
     osmium_cli::CmdOpt<"Dump all locations to STDOUT", osmium_cli::Flag> dump = false;
-    rfl::Flatten<osmium_cli::CommonOptionsNoProgress> common;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptionsNoProgress> common;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> node_id;
 };
 

@@ -266,8 +266,8 @@ struct ExportOptions {
     osmium_cli::CmdShortOpt<"E", "Stop on the first error encountered", osmium_cli::Flag> stop_on_error = false;
     osmium_cli::CmdShortOpt<"I", "Show available index types", osmium_cli::Flag> show_index_types = false;
     osmium_cli::CmdShortOpt<"a", "Comma-separated list of attributes to add to the output (default: none)", osmium_cli::OptStr> attributes;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
     rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
 };
 

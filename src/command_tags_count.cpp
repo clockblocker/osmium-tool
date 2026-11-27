@@ -116,8 +116,8 @@ struct TagsCountOptions {
     osmium_cli::CmdShortOpt<"O", "Allow existing output file to be overwritten", osmium_cli::Flag> overwrite = false;
     osmium_cli::CmdShortOpt<"s", "Sort order of results ('count-asc', 'count-desc' (default), 'name-asc', or 'name-desc')", osmium_cli::OptStr> sort;
     osmium_cli::CmdShortOpt<"t", "Read only objects of given type (node, way, relation)", osmium_cli::OptStrVec> object_type;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
     rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> input_filename;
     rfl::Hidden<rfl::Positional<osmium_cli::OptStrVec>> expression_list;
 };

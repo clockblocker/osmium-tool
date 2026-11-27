@@ -44,9 +44,9 @@ struct CatOptions {
     osmium_cli::CmdShortOpt<"t", "Read only objects of given type (node, way, relation, changeset)", osmium_cli::OptStrVec> object_type;
     osmium_cli::CmdShortOpt<"c", "Clean attribute (version, changeset, timestamp, uid, user)", osmium_cli::OptStrVec> clean;
     osmium_cli::CmdOpt<"Buffer all data in memory before writing it out", osmium_cli::Flag> buffer_data = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::MultipleInputsOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::MultipleInputsOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
 };
 

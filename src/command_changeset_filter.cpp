@@ -57,9 +57,9 @@ struct ChangesetFilterOptions {
     osmium_cli::CmdShortOpt<"a", "Changesets opened after this time", osmium_cli::OptStr> after;
     osmium_cli::CmdShortOpt<"b", "Changesets closed before this time", osmium_cli::OptStr> before;
     osmium_cli::CmdShortOpt<"B", "Changesets overlapping this bounding box", osmium_cli::OptStr> bbox;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
 };
 

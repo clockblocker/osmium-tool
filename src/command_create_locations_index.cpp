@@ -47,8 +47,8 @@ namespace {
 struct CreateLocationsIndexOptions {
     osmium_cli::CmdShortOpt<"i", "Index file name (required)", osmium_cli::OptStr> index_file;
     osmium_cli::CmdShortOpt<"u", "Update existing index file", osmium_cli::Flag> update = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
     rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
 };
 

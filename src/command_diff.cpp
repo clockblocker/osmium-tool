@@ -60,8 +60,8 @@ struct DiffOptions {
     osmium_cli::CmdShortOpt<"q", "Report only when files differ", osmium_cli::Flag> quiet = false;
     osmium_cli::CmdShortOpt<"s", "Show summary on STDERR", osmium_cli::Flag> summary = false;
     osmium_cli::CmdShortOpt<"c", "Suppress common objects", osmium_cli::Flag> suppress_common = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::MultipleInputsOptions> input;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::MultipleInputsOptions> input;
     rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
 };
 

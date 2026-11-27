@@ -59,9 +59,9 @@ struct ApplyChangesOptions {
     osmium_cli::CmdOpt<"Redact (patch) OSM files", osmium_cli::Flag> redact = false;
     osmium_cli::CmdShortOpt<"H", "Apply changes to history file", osmium_cli::Flag> with_history = false;
     osmium_cli::CmdOpt<"Expect and update locations on ways", osmium_cli::Flag> locations_on_ways = false;
-    rfl::Flatten<osmium_cli::CommonOptions> common;
-    rfl::Flatten<osmium_cli::SingleInputOptions> input;
-    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
     rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> input_filename;
     rfl::Hidden<rfl::Positional<osmium_cli::OptStrVec>> change_filenames;
 };
