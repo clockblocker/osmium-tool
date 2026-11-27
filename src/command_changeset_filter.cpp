@@ -38,110 +38,93 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/progress_bar.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+namespace {
+
+struct ChangesetFilterOptions {
+    osmium_cli::CmdShortOpt<"d", "Changesets with discussions (comments)", osmium_cli::Flag> with_discussion = false;
+    osmium_cli::CmdShortOpt<"D", "Changesets without discussions (no comments)", osmium_cli::Flag> without_discussion = false;
+    osmium_cli::CmdShortOpt<"c", "Changesets with changes", osmium_cli::Flag> with_changes = false;
+    osmium_cli::CmdShortOpt<"C", "Changesets without any changes", osmium_cli::Flag> without_changes = false;
+    osmium_cli::CmdOpt<"Open changesets", osmium_cli::Flag> open = false;
+    osmium_cli::CmdOpt<"Closed changesets", osmium_cli::Flag> closed = false;
+    osmium_cli::CmdShortOpt<"u", "Changesets by given user", osmium_cli::OptStr> user;
+    osmium_cli::CmdShortOpt<"U", "Changesets by given user ID", std::optional<osmium::user_id_type>> uid;
+    osmium_cli::CmdShortOpt<"a", "Changesets opened after this time", osmium_cli::OptStr> after;
+    osmium_cli::CmdShortOpt<"b", "Changesets closed before this time", osmium_cli::OptStr> before;
+    osmium_cli::CmdShortOpt<"B", "Changesets overlapping this bounding box", osmium_cli::OptStr> bbox;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
+    rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandChangesetFilter::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("with-discussion,d", "Changesets with discussions (comments)")
-    ("without-discussion,D", "Changesets without discussions (no comments)")
-    ("with-changes,c", "Changesets with changes")
-    ("without-changes,C", "Changesets without any changes")
-    ("open", "Open changesets")
-    ("closed", "Closed changesets")
-    ("user,u", po::value<std::string>(), "Changesets by given user")
-    ("uid,U", po::value<osmium::user_id_type>(), "Changesets by given user ID")
-    ("after,a", po::value<std::string>(), "Changesets opened after this time")
-    ("before,b", po::value<std::string>(), "Changesets closed before this time")
-    ("bbox,B", po::value<std::string>(), "Changesets overlapping this bounding box")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "OSM input file")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<ChangesetFilterOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_input_file(vm);
-    setup_output_file(vm);
 
-    if (vm.count("with-discussion")) {
+    setup_common(opts->common());
+    setup_input_file(opts->input(), rfl::unwrap(opts->positionals().input_filename));
+    setup_output_file(opts->output());
+
+    if (rfl::unwrap(opts->with_discussion)) {
         m_with_discussion = true;
     }
 
-    if (vm.count("without-discussion")) {
+    if (rfl::unwrap(opts->without_discussion)) {
         m_without_discussion = true;
     }
 
-    if (vm.count("with-changes")) {
+    if (rfl::unwrap(opts->with_changes)) {
         m_with_changes = true;
     }
 
-    if (vm.count("without-changes")) {
+    if (rfl::unwrap(opts->without_changes)) {
         m_without_changes = true;
     }
 
-    if (vm.count("open")) {
+    if (rfl::unwrap(opts->open)) {
         m_open = true;
     }
 
-    if (vm.count("closed")) {
+    if (rfl::unwrap(opts->closed)) {
         m_closed = true;
     }
 
-    if (vm.count("uid")) {
-        m_uid = vm["uid"].as<osmium::user_id_type>();
+    if (const auto& u = rfl::unwrap(opts->uid)) {
+        m_uid = *u;
     }
 
-    if (vm.count("user")) {
-        m_user = vm["user"].as<std::string>();
+    if (const auto& u = rfl::unwrap(opts->user)) {
+        m_user = *u;
     }
 
-    if (vm.count("after")) {
-        auto ts = vm["after"].as<std::string>();
+    if (const auto& ts = rfl::unwrap(opts->after)) {
         try {
-            m_after = osmium::Timestamp(ts);
+            m_after = osmium::Timestamp(*ts);
         } catch (const std::invalid_argument&) {
             throw argument_error{"Wrong format for --after/-a timestamp (use YYYY-MM-DDThh:mm:ssZ)."};
         }
     }
 
-    if (vm.count("before")) {
-        auto ts = vm["before"].as<std::string>();
+    if (const auto& ts = rfl::unwrap(opts->before)) {
         try {
-            m_before = osmium::Timestamp(ts);
+            m_before = osmium::Timestamp(*ts);
         } catch (const std::invalid_argument&) {
             throw argument_error{"Wrong format for --before/-b timestamp (use YYYY-MM-DDThh:mm:ssZ)."};
         }
     }
 
-    if (vm.count("bbox")) {
-        m_box = parse_bbox(vm["bbox"].as<std::string>(), "--bbox/-B");
+    if (const auto& b = rfl::unwrap(opts->bbox)) {
+        m_box = parse_bbox(*b, "--bbox/-B");
     }
 
     if (m_with_discussion && m_without_discussion) {

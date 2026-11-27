@@ -34,8 +34,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/osm/types_from_string.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <cstring>
 #include <iostream>
 #include <string>
@@ -43,46 +41,34 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <utility>
 #include <vector>
 
+namespace {
+
+struct QueryLocationsIndexOptions {
+    osmium_cli::CmdShortOpt<"i", "Index file name (required)", osmium_cli::OptStr> index_file;
+    osmium_cli::CmdOpt<"Dump all locations to STDOUT", osmium_cli::Flag> dump = false;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptionsNoProgress> common;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> node_id;
+};
+
+} // anonymous namespace
+
 bool CommandQueryLocationsIndex::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("index-file,i", po::value<std::string>(), "Index file name (required)")
-    ("dump", "Dump all locations to STDOUT")
-    ;
-
-    const po::options_description opts_common{add_common_options(false)};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("node-id", po::value<std::string>(), "Node ID")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("node-id", 1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<QueryLocationsIndexOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    init_output_file(vm);
 
-    if (vm.count("index-file")) {
-        m_index_file_name = vm["index-file"].as<std::string>();
+    setup_common(opts->common());
+    init_output_file(opts->output());
+
+    if (const auto& idx = rfl::unwrap(opts->index_file)) {
+        m_index_file_name = *idx;
     } else {
         throw argument_error{"Missing --index-file,-i option."};
     }
 
-    if (vm.count("dump")) {
+    if (rfl::unwrap(opts->dump)) {
         m_dump = true;
         if ((m_output_filename.empty() || m_output_filename == "-") && m_output_format.empty()) {
             m_output_format = "opl,add_metadata=none";
@@ -96,12 +82,11 @@ bool CommandQueryLocationsIndex::setup(const std::vector<std::string>& arguments
         m_output_file.check();
     }
 
-    if (vm.count("node-id")) {
+    if (const auto& id = rfl::unwrap(opts->node_id)) {
         if (m_dump) {
             throw argument_error{"Either use --dump or use node ID, not both."};
         }
-        const auto id = vm["node-id"].as<std::string>();
-        const auto r = osmium::string_to_object_id(id.c_str(), osmium::osm_entity_bits::node, osmium::item_type::node);
+        const auto r = osmium::string_to_object_id(id->c_str(), osmium::osm_entity_bits::node, osmium::item_type::node);
         m_id = r.second;
     } else if (!m_dump) {
         throw argument_error{"Missing node ID on command line."};

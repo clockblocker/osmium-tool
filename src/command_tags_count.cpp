@@ -108,80 +108,62 @@ sort_func_type get_sort_function(const std::string& sort_order) {
     throw argument_error{"Unknown sort order '" + sort_order + "'"};
 }
 
+struct TagsCountOptions {
+    osmium_cli::CmdShortOpt<"e", "Read tag expressions from file", osmium_cli::OptStr> expressions;
+    osmium_cli::CmdShortOpt<"m", "Min count shown (default: 0)", std::optional<counter_type>> min_count;
+    osmium_cli::CmdShortOpt<"M", "Max count shown (default: none)", std::optional<counter_type>> max_count;
+    osmium_cli::CmdShortOpt<"o", "Output file (default: stdout)", osmium_cli::OptStr> output;
+    osmium_cli::CmdShortOpt<"O", "Allow existing output file to be overwritten", osmium_cli::Flag> overwrite = false;
+    osmium_cli::CmdShortOpt<"s", "Sort order of results ('count-asc', 'count-desc' (default), 'name-asc', or 'name-desc')", osmium_cli::OptStr> sort;
+    osmium_cli::CmdShortOpt<"t", "Read only objects of given type (node, way, relation)", osmium_cli::OptStrVec> object_type;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> input_filename;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStrVec>> expression_list;
+};
+
 } // anonymous namespace
 
 bool CommandTagsCount::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("expressions,e", po::value<std::string>(), "Read tag expressions from file")
-    ("min-count,m", po::value<counter_type>(), "Min count shown (default: 0)")
-    ("max-count,M", po::value<counter_type>(), "Max count shown (default: none)")
-    ("output,o", po::value<std::string>(), "Output file (default: stdout)")
-    ("overwrite,O", "Allow existing output file to be overwritten")
-    ("sort,s", po::value<std::string>(), "Sort order of results ('count-asc', 'count-desc' (default), 'name-asc', or 'name-desc')")
-    ("object-type,t", po::value<std::vector<std::string>>(), "Read only objects of given type (node, way, relation)")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "OSM input file")
-    ("expression-list", po::value<std::vector<std::string>>(), "Count expressions")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-    positional.add("expression-list", -1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<TagsCountOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_object_type_nwr(vm);
-    setup_input_file(vm);
 
-    if (vm.count("output")) {
-        m_output_filename = vm["output"].as<std::string>();
+    setup_common(opts->common());
+    setup_object_type_nwr(rfl::unwrap(opts->object_type));
+    setup_input_file(opts->input(), rfl::unwrap(opts->input_filename));
+
+    if (const auto& out = rfl::unwrap(opts->output)) {
+        m_output_filename = *out;
     }
 
-    if (vm.count("overwrite")) {
+    if (rfl::unwrap(opts->overwrite)) {
         m_output_overwrite = osmium::io::overwrite::allow;
     }
 
-    if (vm.count("expression-list")) {
-        for (const auto& e : vm["expression-list"].as<std::vector<std::string>>()) {
+    if (const auto& exprs = rfl::unwrap(opts->expression_list)) {
+        for (const auto& e : *exprs) {
             add_matcher(e);
         }
     } else {
         m_keys_filter = osmium::TagsFilter{true};
     }
 
-    if (vm.count("expressions")) {
-        read_expressions_file(vm["expressions"].as<std::string>());
+    if (const auto& expr_file = rfl::unwrap(opts->expressions)) {
+        read_expressions_file(*expr_file);
     }
 
-    if (vm.count("min-count")) {
-        m_min_count = vm["min-count"].as<counter_type>();
+    if (const auto& mc = rfl::unwrap(opts->min_count)) {
+        m_min_count = *mc;
     }
 
-    if (vm.count("max-count")) {
-        m_max_count = vm["max-count"].as<counter_type>();
+    if (const auto& mc = rfl::unwrap(opts->max_count)) {
+        m_max_count = *mc;
     }
 
-    if (vm.count("sort")) {
-        m_sort_order = vm["sort"].as<std::string>();
+    if (const auto& s = rfl::unwrap(opts->sort)) {
+        m_sort_order = *s;
         if (m_sort_order == "name") {
             m_sort_order = "name-asc";
         } else if (m_sort_order == "count") {

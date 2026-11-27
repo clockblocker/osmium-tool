@@ -24,7 +24,7 @@ foreach(_source_file ${OSMIUM_SOURCE_FILES})
 endforeach()
 
 add_executable(unit_tests unit_tests.cpp ${ALL_COMMANDS} ${ALL_UNIT_TESTS} ${PROJECT_BINARY_DIR}/src/version.cpp)
-target_link_libraries(unit_tests ${Boost_LIBRARIES} ${OSMIUM_LIBRARIES} reflectcpp::reflectcpp)
+target_link_libraries(unit_tests ${OSMIUM_LIBRARIES} reflectcpp::reflectcpp)
 add_test(NAME unit_tests COMMAND unit_tests WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
 

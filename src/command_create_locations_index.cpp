@@ -36,55 +36,40 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/verbose_output.hpp>
 #include <osmium/visitor.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <system_error>
 #include <vector>
 
+namespace {
+
+struct CreateLocationsIndexOptions {
+    osmium_cli::CmdShortOpt<"i", "Index file name (required)", osmium_cli::OptStr> index_file;
+    osmium_cli::CmdShortOpt<"u", "Update existing index file", osmium_cli::Flag> update = false;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::SingleInputOptions> input;
+    rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandCreateLocationsIndex::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("index-file,i", po::value<std::string>(), "Index file name (required)")
-    ("update,u", "Update existing index file")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "Input file")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<CreateLocationsIndexOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_input_file(vm);
 
-    if (vm.count("index-file")) {
-        m_index_file_name = vm["index-file"].as<std::string>();
+    setup_common(opts->common());
+    setup_input_file(opts->input(), rfl::unwrap(opts->positionals().input_filename));
+
+    if (const auto& idx = rfl::unwrap(opts->index_file)) {
+        m_index_file_name = *idx;
     } else {
         throw argument_error{"Missing --index-file,-i option."};
     }
 
-    if (vm.count("update")) {
+    if (rfl::unwrap(opts->update)) {
         m_update = true;
     }
 

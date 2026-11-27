@@ -31,62 +31,40 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/memory.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <cstdlib>
 #include <iostream>
 #include <vector>
 
-po::options_description Command::add_common_options(const bool with_progress) {
-    po::options_description options{"COMMON OPTIONS"};
-
-    auto opts = options.add_options()
-    ("help,h", "Show usage help")
-    ("verbose,v", "Set verbose mode")
-    ;
-
-    if (with_progress) {
-        opts("progress", "Display progress bar")
-            ("no-progress", "Suppress display of progress bar");
-    }
-
-    return options;
-}
-
-bool Command::setup_common(const boost::program_options::variables_map& vm, const po::options_description& desc) {
-    if (vm.count("help")) {
-        std::cout << "Usage: " << synopsis() << "\n\n"
-                  << m_command_factory.get_description(name()) << "\n"
-                  << desc
-                  << "\nUse 'osmium help " << name() << "' to display the manual page.\n";
-        return false;
-    }
-
-    if (vm.count("verbose")) {
+void Command::setup_common(const osmium_cli::CommonOptions& opts) {
+    if (opts.verbose) {
         m_vout.verbose(true);
     }
 
-    return true;
-}
-
-void Command::setup_progress(const boost::program_options::variables_map& vm) {
-    if (vm.count("progress") && vm.count("no-progress")) {
+    const bool progress = *opts.progress;
+    const bool no_progress = *opts.no_progress;
+    if (progress && no_progress) {
         throw argument_error{"Can not use --progress and --no-progress together."};
     }
 
-    if (vm.count("progress")) {
+    if (progress) {
         m_display_progress = display_progress_type::always;
     }
 
-    if (vm.count("no-progress")) {
+    if (no_progress) {
         m_display_progress = display_progress_type::never;
     }
 }
 
-void Command::setup_object_type_nwrc(const boost::program_options::variables_map& vm) {
-    if (vm.count("object-type")) {
+void Command::setup_common(const osmium_cli::CommonOptionsNoProgress& opts) {
+    if (opts.verbose) {
+        m_vout.verbose(true);
+    }
+}
+
+void Command::setup_object_type_nwrc(const std::optional<std::vector<std::string>>& types) {
+    if (types) {
         m_osm_entity_bits = osmium::osm_entity_bits::nothing;
-        for (const auto& t : vm["object-type"].as<std::vector<std::string>>()) {
+        for (const auto& t : *types) {
             if (t == "n" || t == "node") {
                 m_osm_entity_bits |= osmium::osm_entity_bits::node;
             } else if (t == "w" || t == "way") {
@@ -106,10 +84,10 @@ void Command::setup_object_type_nwrc(const boost::program_options::variables_map
     }
 }
 
-void Command::setup_object_type_nwr(const boost::program_options::variables_map& vm) {
-    if (vm.count("object-type")) {
+void Command::setup_object_type_nwr(const std::optional<std::vector<std::string>>& types) {
+    if (types) {
         m_osm_entity_bits = osmium::osm_entity_bits::nothing;
-        for (const auto& t : vm["object-type"].as<std::vector<std::string>>()) {
+        for (const auto& t : *types) {
             if (t == "n" || t == "node") {
                 m_osm_entity_bits |= osmium::osm_entity_bits::node;
             } else if (t == "w" || t == "way") {

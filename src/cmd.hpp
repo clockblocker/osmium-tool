@@ -23,6 +23,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 */
 
+#include "cli_options.hpp"
 #include "option_clean.hpp"
 
 #include <osmium/io/file.hpp>
@@ -31,8 +32,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/osm/entity_bits.hpp>
 #include <osmium/util/file.hpp>
 #include <osmium/util/verbose_output.hpp>
-
-#include <boost/program_options.hpp>
 
 #include <algorithm>
 #include <functional>
@@ -47,8 +46,6 @@ const char* get_osmium_long_version() noexcept;
 const char* get_libosmium_version() noexcept;
 
 class CommandFactory;
-
-namespace po = boost::program_options;
 
 /**
  * Virtual base class for commands that can be called from the command line.
@@ -109,11 +106,13 @@ public:
     // The command line usage synopsis of the command.
     virtual const char* synopsis() const noexcept = 0;
 
-    static po::options_description add_common_options(bool with_progress = true);
-    bool setup_common(const boost::program_options::variables_map& vm, const po::options_description& desc);
-    void setup_progress(const boost::program_options::variables_map& vm);
-    void setup_object_type_nwrc(const boost::program_options::variables_map& vm);
-    void setup_object_type_nwr(const boost::program_options::variables_map& vm);
+    template <class Opts>
+    std::optional<Opts> parse_options(const std::vector<std::string>& arguments) const;
+
+    void setup_common(const osmium_cli::CommonOptions& opts);
+    void setup_common(const osmium_cli::CommonOptionsNoProgress& opts);
+    void setup_object_type_nwrc(const std::optional<std::vector<std::string>>& types);
+    void setup_object_type_nwr(const std::optional<std::vector<std::string>>& types);
     void show_object_types(osmium::VerboseOutput& vout);
     void print_arguments(const std::string& command);
     void show_memory_used();
@@ -146,9 +145,7 @@ protected:
 
 public:
 
-    void setup_input_file(const boost::program_options::variables_map& vm);
-
-    static po::options_description add_single_input_options();
+    void setup_input_file(const osmium_cli::SingleInputOptions& opts, const std::optional<std::string>& filename);
 
     void show_single_input_arguments(osmium::VerboseOutput& vout);
 
@@ -173,9 +170,7 @@ protected:
 
 public:
 
-    void setup_input_files(const boost::program_options::variables_map& vm);
-
-    static po::options_description add_multiple_inputs_options();
+    void setup_input_files(const osmium_cli::MultipleInputsOptions& opts, const std::optional<std::vector<std::string>>& filenames);
 
     void show_multiple_inputs_arguments(osmium::VerboseOutput& vout);
 
@@ -242,11 +237,9 @@ public:
         m_generator.append(get_osmium_version());
     }
 
-    void init_output_file(const po::variables_map& vm);
+    void init_output_file(const osmium_cli::OutputOptions& opts);
     void check_output_file();
-    void setup_output_file(const po::variables_map& vm);
-
-    static po::options_description add_output_options();
+    void setup_output_file(const osmium_cli::OutputOptions& opts);
 
     void show_output_arguments(osmium::VerboseOutput& vout);
 
@@ -298,6 +291,11 @@ public:
     std::unique_ptr<Command> create_command(const std::string& name) const;
 
 }; // class CommandFactory
+
+template <class Opts>
+std::optional<Opts> Command::parse_options(const std::vector<std::string>& arguments) const {
+    return osmium_cli::parse_command_options<Opts>(*this, m_command_factory.get_description(name()), arguments);
+}
 
 void register_commands(CommandFactory& cmd_factory);
 std::string check_index_type(const std::string& index_type_name, bool allow_none = false);

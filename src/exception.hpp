@@ -42,6 +42,22 @@ struct argument_error : std::runtime_error {
 };
 
 /**
+ *  Thrown when command line syntax parsing fails (unknown option, missing
+ *  option value, bad type, etc.).
+ */
+struct cli_parse_error : std::runtime_error {
+
+    explicit cli_parse_error(const char* message) :
+        std::runtime_error(message) {
+    }
+
+    explicit cli_parse_error(const std::string& message) :
+        std::runtime_error(message) {
+    }
+
+};
+
+/**
  *  Thrown when there is a problem with parsing a JSON config file.
  */
 struct config_error : public std::runtime_error {

@@ -32,55 +32,40 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/osm/types.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <cassert>
 #include <cstdlib>
 #include <string>
 #include <utility>
 #include <vector>
 
+namespace {
+
+struct CatOptions {
+    osmium_cli::CmdShortOpt<"t", "Read only objects of given type (node, way, relation, changeset)", osmium_cli::OptStrVec> object_type;
+    osmium_cli::CmdShortOpt<"c", "Clean attribute (version, changeset, timestamp, uid, user)", osmium_cli::OptStrVec> clean;
+    osmium_cli::CmdOpt<"Buffer all data in memory before writing it out", osmium_cli::Flag> buffer_data = false;
+    rfl::cli::OptGroup<"COMMON OPTIONS", osmium_cli::CommonOptions> common;
+    rfl::cli::OptGroup<"INPUT OPTIONS", osmium_cli::MultipleInputsOptions> input;
+    rfl::cli::OptGroup<"OUTPUT OPTIONS", osmium_cli::OutputOptions> output;
+    rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandCat::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("object-type,t", po::value<std::vector<std::string>>(), "Read only objects of given type (node, way, relation, changeset)")
-    ("clean,c", po::value<std::vector<std::string>>(), "Clean attribute (version, changeset, timestamp, uid, user)")
-    ("buffer-data", "Buffer all data in memory before writing it out")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_multiple_inputs_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filenames", po::value<std::vector<std::string>>(), "Input files")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filenames", -1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<CatOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_object_type_nwrc(vm);
-    setup_input_files(vm);
-    setup_output_file(vm);
 
-    m_clean.setup(vm);
+    setup_common(opts->common());
+    setup_object_type_nwrc(rfl::unwrap(opts->object_type));
+    setup_input_files(opts->input(), rfl::unwrap(opts->positionals().input_filenames));
+    setup_output_file(opts->output());
 
-    if (vm.count("buffer-data")) {
+    m_clean.setup(rfl::unwrap(opts->clean));
+
+    if (rfl::unwrap(opts->buffer_data)) {
         m_buffer_data = true;
     }
 

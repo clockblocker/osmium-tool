@@ -31,18 +31,17 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/io/writer_options.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <string>
 #include <vector>
 
-void with_single_osm_input::setup_input_file(const boost::program_options::variables_map& vm) {
-    if (vm.count("input-filename")) {
-        m_input_filename = vm["input-filename"].as<std::string>();
+void with_single_osm_input::setup_input_file(const osmium_cli::SingleInputOptions& opts,
+                                             const std::optional<std::string>& filename) {
+    if (filename) {
+        m_input_filename = *filename;
     }
 
-    if (vm.count("input-format")) {
-        m_input_format = vm["input-format"].as<std::string>();
+    if (opts.input_format) {
+        m_input_format = **opts.input_format;
     }
 
     if (m_input_format.empty()) {
@@ -60,25 +59,16 @@ void with_single_osm_input::setup_input_file(const boost::program_options::varia
     m_input_file = osmium::io::File{m_input_filename, m_input_format};
 }
 
-po::options_description with_single_osm_input::add_single_input_options() {
-    po::options_description options{"INPUT OPTIONS"};
-
-    options.add_options()
-    ("input-format,F", po::value<std::string>(), "Format of input file")
-    ;
-
-    return options;
-}
-
 void with_single_osm_input::show_single_input_arguments(osmium::VerboseOutput& vout) {
     vout << "  input options:\n";
     vout << "    file name: " << m_input_filename << "\n";
     vout << "    file format: " << m_input_format << "\n";
 }
 
-void with_multiple_osm_inputs::setup_input_files(const boost::program_options::variables_map& vm) {
-    if (vm.count("input-filenames")) {
-        m_input_filenames = vm["input-filenames"].as<std::vector<std::string>>();
+void with_multiple_osm_inputs::setup_input_files(const osmium_cli::MultipleInputsOptions& opts,
+                                                 const std::optional<std::vector<std::string>>& filenames) {
+    if (filenames) {
+        m_input_filenames = *filenames;
     } else {
         m_input_filenames.emplace_back("-"); // default is stdin
     }
@@ -93,8 +83,8 @@ void with_multiple_osm_inputs::setup_input_files(const boost::program_options::v
         }
     }
 
-    if (vm.count("input-format")) {
-        m_input_format = vm["input-format"].as<std::string>();
+    if (opts.input_format) {
+        m_input_format = **opts.input_format;
     }
 
     if (uses_stdin && m_input_format.empty()) {
@@ -109,16 +99,6 @@ void with_multiple_osm_inputs::setup_input_files(const boost::program_options::v
 }
 
 
-po::options_description with_multiple_osm_inputs::add_multiple_inputs_options() {
-    po::options_description options{"INPUT OPTIONS"};
-
-    options.add_options()
-    ("input-format,F", po::value<std::string>(), "Format of input files")
-    ;
-
-    return options;
-}
-
 void with_multiple_osm_inputs::show_multiple_inputs_arguments(osmium::VerboseOutput& vout) {
     vout << "  input options:\n";
     vout << "    file names: \n";
@@ -126,32 +106,6 @@ void with_multiple_osm_inputs::show_multiple_inputs_arguments(osmium::VerboseOut
         vout << "      " << fn << "\n";
     }
     vout << "    file format: " << m_input_format << "\n";
-}
-
-void with_osm_output::init_output_file(const po::variables_map& vm) {
-    if (vm.count("generator")) {
-        m_generator = vm["generator"].as<std::string>();
-    }
-
-    if (vm.count("output")) {
-        m_output_filename = vm["output"].as<std::string>();
-    }
-
-    if (vm.count("output-format")) {
-        m_output_format = vm["output-format"].as<std::string>();
-    }
-
-    if (vm.count("output-header")) {
-        m_output_headers = vm["output-header"].as<std::vector<std::string>>();
-    }
-
-    if (vm.count("overwrite")) {
-        m_output_overwrite = osmium::io::overwrite::allow;
-    }
-
-    if (vm.count("fsync")) {
-        m_fsync = osmium::io::fsync::yes;
-    }
 }
 
 void with_osm_output::check_output_file() {
@@ -170,24 +124,35 @@ void with_osm_output::check_output_file() {
     m_output_file.check();
 }
 
-void with_osm_output::setup_output_file(const po::variables_map& vm) {
-    init_output_file(vm);
-    check_output_file();
+void with_osm_output::init_output_file(const osmium_cli::OutputOptions& opts) {
+    if (opts.generator) {
+        m_generator = **opts.generator;
+    }
+
+    if (opts.output) {
+        m_output_filename = **opts.output;
+    }
+
+    if (opts.output_format) {
+        m_output_format = **opts.output_format;
+    }
+
+    if (opts.output_header) {
+        m_output_headers = **opts.output_header;
+    }
+
+    if (opts.overwrite) {
+        m_output_overwrite = osmium::io::overwrite::allow;
+    }
+
+    if (opts.fsync) {
+        m_fsync = osmium::io::fsync::yes;
+    }
 }
 
-po::options_description with_osm_output::add_output_options() {
-    po::options_description options{"OUTPUT OPTIONS"};
-
-    options.add_options()
-    ("output-format,f", po::value<std::string>(), "Format of output file")
-    ("fsync", "Call fsync after writing file")
-    ("generator", po::value<std::string>(), "Generator setting for file header")
-    ("output,o", po::value<std::string>(), "Output file")
-    ("overwrite,O", "Allow existing output file to be overwritten")
-    ("output-header", po::value<std::vector<std::string>>(), "Add output header")
-    ;
-
-    return options;
+void with_osm_output::setup_output_file(const osmium_cli::OutputOptions& opts) {
+    init_output_file(opts);
+    check_output_file();
 }
 
 void with_osm_output::show_output_arguments(osmium::VerboseOutput& vout) {

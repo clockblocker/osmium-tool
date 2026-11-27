@@ -28,7 +28,7 @@ TEST_CASE("diff") {
     }
 
     SECTION("parameter --fsync") {
-        REQUIRE_THROWS_AS(cmd.setup({"--fsync"}), boost::program_options::unknown_option);
+        REQUIRE_THROWS_AS(cmd.setup({"--fsync"}), cli_parse_error);
     }
 
     SECTION("quiet with output parameter -O") {
