@@ -42,16 +42,19 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/visitor.hpp>
 
 #include <nlohmann/json.hpp>
+#include <rfl/nlohmann.hpp>
 
 #include <boost/program_options.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -330,123 +333,185 @@ public:
 
 }; // class HumanReadableOutput
 
+namespace fileinfo_json {
+
+struct FileinfoFile {
+    std::string name;
+    std::string format;
+    std::string compression;
+    std::optional<int64_t> size;
+};
+
+struct FileinfoHeader {
+    std::vector<std::array<double, 4>> boxes;
+    bool with_history = false;
+    rfl::Object<std::string> option;
+};
+
+struct FileinfoTimestamp {
+    std::string first;
+    std::string last;
+};
+
+template <typename T>
+struct FileinfoCounts {
+    T changesets = 0;
+    T nodes = 0;
+    T ways = 0;
+    T relations = 0;
+};
+
+struct FileinfoBuffers {
+    int64_t count = 0;
+    int64_t size = 0;
+    int64_t capacity = 0;
+};
+
+struct FileinfoMetadataFlags {
+    bool version = false;
+    bool timestamp = false;
+    bool changeset = false;
+    bool user = false;
+    bool uid = false;
+};
+
+struct FileinfoMetadata {
+    FileinfoMetadataFlags all_objects;
+    FileinfoMetadataFlags some_objects;
+};
+
+struct FileinfoData {
+    std::array<double, 4> bbox{};
+    std::optional<FileinfoTimestamp> timestamp;
+    bool objects_ordered = true;
+    std::optional<bool> multiple_versions;
+    std::optional<std::string> crc32;
+    FileinfoCounts<uint64_t> count;
+    FileinfoCounts<int64_t> minid;
+    FileinfoCounts<int64_t> maxid;
+    FileinfoBuffers buffers;
+    FileinfoMetadata metadata;
+};
+
+struct FileinfoDoc {
+    FileinfoFile file;
+    FileinfoHeader header;
+    std::optional<FileinfoData> data;
+};
+
+} // namespace fileinfo_json
+
+namespace {
+
+using namespace fileinfo_json;
+
+FileinfoMetadataFlags to_metadata_flags(const osmium::metadata_options& opts) noexcept {
+    return {
+        opts.version(),
+        opts.timestamp(),
+        opts.changeset(),
+        opts.user(),
+        opts.uid()
+    };
+}
+
+} // anonymous namespace
+
 class JSONOutput : public Output {
 
-    json m_json;
+    FileinfoDoc m_doc;
 
 public:
 
     void file(const std::string& input_filename, const osmium::io::File& input_file) final {
-        m_json["file"] = {
-            {"name", input_filename},
-            {"format", osmium::io::as_string(input_file.format())},
-            {"compression", osmium::io::as_string(input_file.compression())}
+        m_doc.file = {
+            input_filename,
+            osmium::io::as_string(input_file.format()),
+            osmium::io::as_string(input_file.compression()),
+            input_file.filename().empty()
+                ? std::nullopt
+                : std::optional<int64_t>{static_cast<int64_t>(file_size(input_file))}
         };
-
-        if (!input_file.filename().empty()) {
-            m_json["file"]["size"] = static_cast<int64_t>(file_size(input_file));
-        }
     }
 
     void header(const osmium::io::Header& header) final {
-        std::vector<std::vector<double>> boxes;
+        m_doc.header.boxes.clear();
         for (const auto& box : header.boxes()) {
-            boxes.emplace_back(std::vector<double>{
+            m_doc.header.boxes.push_back({
                 box.bottom_left().lon(),
                 box.bottom_left().lat(),
                 box.top_right().lon(),
                 box.top_right().lat()
             });
         }
-
-        json json_options;
+        m_doc.header.with_history = header.has_multiple_object_versions();
+        m_doc.header.option.clear();
         for (const auto& option : header) {
-            json_options[option.first] = option.second;
+            m_doc.header.option[option.first] = option.second;
         }
-
-        m_json["header"] = {
-            {"boxes", boxes},
-            {"with_history", header.has_multiple_object_versions()},
-            {"option", json_options}
-        };
     }
 
     void data(const osmium::io::Header& /*header*/, const InfoHandler& info_handler) final {
-        json json_data = {
-            {"bbox", { info_handler.bounds.bottom_left().lon(),
-                       info_handler.bounds.bottom_left().lat(),
-                       info_handler.bounds.top_right().lon(),
-                       info_handler.bounds.top_right().lat() }}
+        FileinfoData d;
+        d.bbox = {
+            info_handler.bounds.bottom_left().lon(),
+            info_handler.bounds.bottom_left().lat(),
+            info_handler.bounds.top_right().lon(),
+            info_handler.bounds.top_right().lat()
         };
 
         if (info_handler.first_timestamp() != osmium::end_of_time()) {
-            json_data["timestamp"] = {
-                {"first", info_handler.first_timestamp().to_iso()},
-                {"last", info_handler.last_timestamp().to_iso()}
+            d.timestamp = FileinfoTimestamp{
+                info_handler.first_timestamp().to_iso(),
+                info_handler.last_timestamp().to_iso()
             };
         }
 
-        json_data["objects_ordered"] = info_handler.ordered;
-
+        d.objects_ordered = info_handler.ordered;
         if (info_handler.ordered) {
-            json_data["multiple_versions"] = info_handler.multiple_versions;
+            d.multiple_versions = info_handler.multiple_versions;
         }
 
         if (calculate_crc()) {
             std::stringstream ss;
             ss << std::hex << info_handler.crc32().checksum() << std::dec;
-            json_data["crc32"] = ss.str().c_str();
+            d.crc32 = ss.str();
         }
 
-        json_data["count"] = {
-            {"changesets", info_handler.changesets},
-            {"nodes", info_handler.nodes},
-            {"ways", info_handler.ways},
-            {"relations", info_handler.relations}
+        d.count = {
+            info_handler.changesets,
+            info_handler.nodes,
+            info_handler.ways,
+            info_handler.relations
+        };
+        d.minid = {
+            static_cast<int64_t>(get_smallest(info_handler.smallest_changeset_id())),
+            static_cast<int64_t>(get_smallest(info_handler.smallest_node_id())),
+            static_cast<int64_t>(get_smallest(info_handler.smallest_way_id())),
+            static_cast<int64_t>(get_smallest(info_handler.smallest_relation_id()))
+        };
+        d.maxid = {
+            static_cast<int64_t>(get_largest(info_handler.largest_changeset_id())),
+            static_cast<int64_t>(get_largest(info_handler.largest_node_id())),
+            static_cast<int64_t>(get_largest(info_handler.largest_way_id())),
+            static_cast<int64_t>(get_largest(info_handler.largest_relation_id()))
+        };
+        d.buffers = {
+            get_largest(static_cast<int64_t>(info_handler.buffers_count)),
+            get_largest(static_cast<int64_t>(info_handler.buffers_size)),
+            get_largest(static_cast<int64_t>(info_handler.buffers_capacity))
+        };
+        d.metadata = {
+            to_metadata_flags(info_handler.metadata_all_objects),
+            to_metadata_flags(info_handler.metadata_some_objects)
         };
 
-        json_data["minid"] = {
-            {"changesets", static_cast<int64_t>(get_smallest(info_handler.smallest_changeset_id()))},
-            {"nodes", static_cast<int64_t>(get_smallest(info_handler.smallest_node_id()))},
-            {"ways", static_cast<int64_t>(get_smallest(info_handler.smallest_way_id()))},
-            {"relations", static_cast<int64_t>(get_smallest(info_handler.smallest_relation_id()))}
-        };
-
-        json_data["maxid"] = {
-            {"changesets", static_cast<int64_t>(get_largest(info_handler.largest_changeset_id()))},
-            {"nodes", static_cast<int64_t>(get_largest(info_handler.largest_node_id()))},
-            {"ways", static_cast<int64_t>(get_largest(info_handler.largest_way_id()))},
-            {"relations", static_cast<int64_t>(get_largest(info_handler.largest_relation_id()))}
-        };
-
-        json_data["buffers"] = {
-            {"count", get_largest(static_cast<int64_t>(info_handler.buffers_count))},
-            {"size", get_largest(static_cast<int64_t>(info_handler.buffers_size))},
-            {"capacity", get_largest(static_cast<int64_t>(info_handler.buffers_capacity))}
-        };
-
-        json_data["metadata"] = {
-            {"all_objects", {
-                {"version", info_handler.metadata_all_objects.version()},
-                {"timestamp", info_handler.metadata_all_objects.timestamp()},
-                {"changeset", info_handler.metadata_all_objects.changeset()},
-                {"user", info_handler.metadata_all_objects.user()},
-                {"uid", info_handler.metadata_all_objects.uid()}}
-            },
-            {"some_objects", {
-                {"version", info_handler.metadata_some_objects.version()},
-                {"timestamp", info_handler.metadata_some_objects.timestamp()},
-                {"changeset", info_handler.metadata_some_objects.changeset()},
-                {"user", info_handler.metadata_some_objects.user()},
-                {"uid", info_handler.metadata_some_objects.uid()}}
-            }
-        };
-
-        m_json["data"] = json_data;
+        m_doc.data = std::move(d);
     }
 
     void output() final {
-        std::cout << std::setw(4) << m_json << "\n";
+        const auto j = rfl::nlohmann::write<json>(m_doc);
+        std::cout << std::setw(4) << j << "\n";
     }
 
 }; // class JSONOutput

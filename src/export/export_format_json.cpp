@@ -30,11 +30,91 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/osm.hpp>
 
 #include <array>
+#include <cstdint>
 #include <cstdio>
+#include <stdexcept>
 #include <string>
+#include <utility>
+#include <variant>
+#include <vector>
 
 static constexpr const std::size_t initial_buffer_size = 1024UL * 1024UL;
 static constexpr const std::size_t flush_buffer_size   =  800UL * 1024UL;
+
+namespace export_json {
+
+using UniqueIdValue = std::variant<std::uint64_t, std::string>;
+using PropertyValue = std::variant<std::string, std::int64_t, std::uint64_t, std::vector<std::int64_t>>;
+
+struct GeoJSONGeometry {
+    std::string type;
+    rfl::json::Raw coordinates;
+};
+
+struct GeoJSONFeature {
+    std::string type{"Feature"};
+    std::optional<UniqueIdValue> id;
+    GeoJSONGeometry geometry;
+    rfl::Object<PropertyValue> properties;
+};
+
+} // namespace export_json
+
+namespace {
+
+void append_coordinate(std::string* buffer, double coord) {
+    std::array<char, 20> tmp{};
+    auto n = std::snprintf(tmp.data(), tmp.size(), "%.7f", coord);
+
+    // remove trailing zeros
+    while (n >= 2 && tmp[static_cast<std::size_t>(n - 1)] == '0' && tmp[static_cast<std::size_t>(n - 2)] != '.') {
+        --n;
+    }
+
+    buffer->append(tmp.data(), static_cast<std::size_t>(n));
+}
+
+} // anonymous namespace
+
+void ExportFormatJSON::FdStreamBuf::set_fd(int fd) {
+    m_fd = fd;
+    m_buffer.reserve(initial_buffer_size);
+}
+
+void ExportFormatJSON::FdStreamBuf::flush_buffer() {
+    if (m_fd >= 0 && !m_buffer.empty()) {
+        osmium::io::detail::reliable_write(m_fd, m_buffer.data(), m_buffer.size());
+        m_buffer.clear();
+    }
+}
+
+void ExportFormatJSON::FdStreamBuf::flush_all() {
+    flush_buffer();
+}
+
+std::streambuf::int_type ExportFormatJSON::FdStreamBuf::overflow(int_type ch) {
+    if (ch == traits_type::eof()) {
+        return traits_type::not_eof(ch);
+    }
+    m_buffer.push_back(traits_type::to_char_type(ch));
+    if (m_buffer.size() > flush_buffer_size) {
+        flush_buffer();
+    }
+    return ch;
+}
+
+std::streamsize ExportFormatJSON::FdStreamBuf::xsputn(const char* s, std::streamsize n) {
+    m_buffer.append(s, static_cast<std::size_t>(n));
+    if (m_buffer.size() > flush_buffer_size) {
+        flush_buffer();
+    }
+    return n;
+}
+
+int ExportFormatJSON::FdStreamBuf::sync() {
+    flush_buffer();
+    return 0;
+}
 
 ExportFormatJSON::ExportFormatJSON(const std::string& output_format,
                                    const std::string& output_filename,
@@ -45,257 +125,160 @@ ExportFormatJSON::ExportFormatJSON(const std::string& output_format,
     m_fd(osmium::io::detail::open_for_writing(output_filename, overwrite)),
     m_fsync(fsync),
     m_text_sequence_format(output_format == "geojsonseq"),
-    m_with_record_separator(m_text_sequence_format && options.format_options.is_true("print_record_separator")) {
-    m_buffer.reserve(initial_buffer_size);
-    if (!m_text_sequence_format) {
-        m_buffer += R"({"type":"FeatureCollection","features":[)";
-        m_buffer += '\n';
-    }
-    m_committed_size = m_buffer.size();
+    m_with_record_separator(m_text_sequence_format && options.format_options.is_true("print_record_separator")),
+    m_out(&m_streambuf) {
+    m_streambuf.set_fd(m_fd);
 
-    if (output_format == "geojsonseq") {
+    if (m_text_sequence_format) {
         const auto prs = options.format_options.get("print_record_separator");
         if (prs != "true" && prs != "false") {
             throw config_error{"Unknown value for print_record_separator option: '" + prs + "'."};
         }
+        m_stream_writer.emplace(
+            m_out,
+            m_with_record_separator ? rfl::json::StreamFormat::json_seq
+                                    : rfl::json::StreamFormat::ndjson);
+    } else {
+        m_out << R"({"type":"FeatureCollection","features":[)" << '\n';
     }
 }
 
-void ExportFormatJSON::flush_to_output() {
-    osmium::io::detail::reliable_write(m_fd, m_buffer.data(), m_buffer.size());
-    m_buffer.clear();
-    m_committed_size = 0;
+void ExportFormatJSON::append_coordinate_pair(std::string* buffer, const osmium::Location& location) {
+    *buffer += '[';
+    append_coordinate(buffer, location.lon());
+    *buffer += ',';
+    append_coordinate(buffer, location.lat());
+    *buffer += ']';
 }
 
-void ExportFormatJSON::start_feature(const std::string& prefix, osmium::object_id_type id) {
-    rollback_uncomitted();
-
-    if (m_count > 0) {
-        if (!m_text_sequence_format) {
-            m_buffer += ',';
-        }
-        m_buffer += '\n';
+void ExportFormatJSON::append_coordinate_list(std::string* buffer, const osmium::NodeRefList& nrl) {
+    *buffer += '[';
+    for (const auto& nr : nrl) {
+        append_coordinate_pair(buffer, nr.location());
+        *buffer += ',';
     }
 
-    if (m_with_record_separator) {
-        m_buffer += static_cast<char>(0x1e);
-    }
-
-    m_buffer += R"({"type":"Feature")";
-
-    if (options().unique_id == unique_id_type::counter) {
-        m_buffer += R"(,"id":)";
-        m_buffer += std::to_string(m_count + 1);
-    } else if (options().unique_id == unique_id_type::type_id) {
-        m_buffer += R"(,"id":")";
-        m_buffer += prefix;
-        m_buffer += std::to_string(id);
-        m_buffer += '"';
+    if (buffer->back() == ',') {
+        buffer->back() = ']';
+    } else {
+        *buffer += ']';
     }
 }
 
-void ExportFormatJSON::add_option(const std::string& name) {
-    const nlohmann::json j = name;
-    m_buffer += j.dump();
-    m_buffer += ':';
-}
-
-void ExportFormatJSON::add_attributes(const osmium::OSMObject& object) {
+void ExportFormatJSON::emit_feature(const std::string& prefix,
+                                    const osmium::OSMObject& object,
+                                    const char* geom_type,
+                                    std::string coordinates_json) {
+    rfl::Object<export_json::PropertyValue> props;
 
     if (!options().type.empty()) {
-        add_option(options().type);
-        m_buffer += '"';
-        m_buffer += object_type_as_string(object);
-        m_buffer += '"';
-        m_buffer += ',';
+        props.insert(options().type, export_json::PropertyValue{std::string{object_type_as_string(object)}});
     }
-
     if (!options().id.empty()) {
-        add_option(options().id);
-        m_buffer += std::to_string(object.type() == osmium::item_type::area ? osmium::area_id_to_object_id(object.id()) : object.id());
-        m_buffer += ',';
+        const auto id_val = object.type() == osmium::item_type::area
+            ? osmium::area_id_to_object_id(object.id())
+            : object.id();
+        props.insert(options().id, export_json::PropertyValue{static_cast<std::int64_t>(id_val)});
     }
-
     if (!options().version.empty()) {
-        add_option(options().version);
-        m_buffer += std::to_string(object.version());
-        m_buffer += ',';
+        props.insert(options().version, export_json::PropertyValue{static_cast<std::uint64_t>(object.version())});
     }
-
     if (!options().changeset.empty()) {
-        add_option(options().changeset);
-        m_buffer += std::to_string(object.changeset());
-        m_buffer += ',';
+        props.insert(options().changeset, export_json::PropertyValue{static_cast<std::uint64_t>(object.changeset())});
     }
-
     if (!options().uid.empty()) {
-        add_option(options().uid);
-        m_buffer += std::to_string(object.uid());
-        m_buffer += ',';
+        props.insert(options().uid, export_json::PropertyValue{static_cast<std::uint64_t>(object.uid())});
     }
-
     if (!options().user.empty()) {
-        add_option(options().user);
-        const nlohmann::json j = object.user();
-        m_buffer += j.dump();
-        m_buffer += ',';
+        props.insert(options().user, export_json::PropertyValue{std::string{object.user()}});
     }
-
     if (!options().timestamp.empty()) {
-        add_option(options().timestamp);
-        m_buffer += std::to_string(object.timestamp().seconds_since_epoch());
-        m_buffer += ',';
+        props.insert(options().timestamp, export_json::PropertyValue{static_cast<std::uint64_t>(object.timestamp().seconds_since_epoch())});
     }
-
     if (!options().way_nodes.empty() && object.type() == osmium::item_type::way) {
-        add_option(options().way_nodes);
-        m_buffer += '[';
-        for (const auto& nr : static_cast<const osmium::Way&>(object).nodes()) {
-            m_buffer += std::to_string(nr.ref());
-            m_buffer += ',';
+        std::vector<std::int64_t> refs;
+        const auto& nodes = static_cast<const osmium::Way&>(object).nodes();
+        refs.reserve(nodes.size());
+        for (const auto& nr : nodes) {
+            refs.push_back(nr.ref());
         }
-
-        if (m_buffer.back() == ',') {
-            m_buffer.back() = ']';
-        } else {
-            m_buffer += ']';
-        }
-        m_buffer += ',';
+        props.insert(options().way_nodes, export_json::PropertyValue{std::move(refs)});
     }
-}
 
-void ExportFormatJSON::finish_feature(const osmium::OSMObject& object) {
-    m_buffer += R"(,"properties":{)";
-
-    add_attributes(object);
-
-    nlohmann::json j;
     const bool has_tags = add_tags(object, [&](const osmium::Tag& tag) {
-        j = tag.key();
-        m_buffer += j.dump();
-        m_buffer += ':';
-        j = tag.value();
-        m_buffer += j.dump();
-        m_buffer += ',';
+        props.insert(std::string{tag.key()}, export_json::PropertyValue{std::string{tag.value()}});
     });
 
-    if (has_tags || options().keep_untagged) {
-        if (m_buffer.back() == ',') {
-            m_buffer.back() = '}'; // end properties
-        } else {
-            m_buffer += '}'; // end properties
+    if (!has_tags && !options().keep_untagged) {
+        return;
+    }
+
+    export_json::GeoJSONFeature feature;
+    if (options().unique_id == unique_id_type::counter) {
+        feature.id = m_count + 1;
+    } else if (options().unique_id == unique_id_type::type_id) {
+        feature.id = prefix + std::to_string(object.id());
+    }
+    feature.geometry = {geom_type, rfl::json::Raw{std::move(coordinates_json)}};
+    feature.properties = std::move(props);
+
+    if (m_stream_writer) {
+        const auto res = m_stream_writer->write(feature);
+        if (!res) {
+            throw std::runtime_error{res.error().what()};
         }
-        m_buffer += '}'; // end feature
-
-        m_committed_size = m_buffer.size();
-        ++m_count;
-
-        if (m_buffer.size() > flush_buffer_size) {
-            flush_to_output();
-        }
-    }
-}
-
-namespace {
-
-void append_coordinate(std::string* buffer, double coord) {
-    std::array<char, 20> tmp{};
-    auto n = std::snprintf(&*tmp.begin(), 20, "%.7f", coord);
-
-    // remove trailing zeros
-    while (n >= 2 && tmp[n - 1] == '0' && tmp[n - 2] != '.') {
-        --n;
-    }
-
-    buffer->append(&*tmp.begin(), n);
-}
-
-} // anonymous namespace
-
-void ExportFormatJSON::create_coordinate(const osmium::Location& location) {
-    std::string buffer;
-    buffer.resize(20);
-    m_buffer += '[';
-    append_coordinate(&m_buffer, location.lon());
-    m_buffer += ',';
-    append_coordinate(&m_buffer, location.lat());
-    m_buffer += ']';
-}
-
-void ExportFormatJSON::create_coordinate_list(const osmium::NodeRefList& nrl) {
-    m_buffer += '[';
-    for (auto const &nr : nrl) {
-        create_coordinate(nr.location());
-        m_buffer += ',';
-    }
-
-    if (m_buffer.back() == ',') {
-        m_buffer.back() = ']';
     } else {
-        m_buffer += ']';
-    }
-}
-
-void ExportFormatJSON::create_point(const osmium::Node& node) {
-    m_buffer += R"(,"geometry":{"type":"Point","coordinates":)";
-    create_coordinate(node.location());
-    m_buffer += '}';
-}
-
-void ExportFormatJSON::create_linestring(const osmium::Way& way) {
-    m_buffer += R"(,"geometry":{"type":"LineString","coordinates":)";
-    create_coordinate_list(way.nodes());
-    m_buffer += '}';
-}
-
-void ExportFormatJSON::create_multipolygon(const osmium::Area& area) {
-    m_buffer += R"(,"geometry":{"type":"MultiPolygon","coordinates":)";
-    m_buffer += '[';
-    for (const auto &outer_ring : area.outer_rings()) {
-        m_buffer += '[';
-        create_coordinate_list(outer_ring);
-        for (const auto &inner_ring : area.inner_rings(outer_ring)) {
-            m_buffer += ",";
-            create_coordinate_list(inner_ring);
+        if (m_count > 0) {
+            m_out << ",\n";
         }
-        m_buffer += "],";
+        m_out << rfl::json::write(feature);
     }
-    m_buffer.pop_back(); // remove trailing comma
-    m_buffer += "]}";
+
+    ++m_count;
 }
 
 void ExportFormatJSON::node(const osmium::Node& node) {
-    start_feature("n", node.id());
-    create_point(node);
-    finish_feature(node);
+    std::string coords;
+    coords.reserve(32);
+    append_coordinate_pair(&coords, node.location());
+    emit_feature("n", node, "Point", std::move(coords));
 }
 
 void ExportFormatJSON::way(const osmium::Way& way) {
-    start_feature("w", way.id());
-    create_linestring(way);
-    finish_feature(way);
+    std::string coords;
+    coords.reserve(way.nodes().size() * 24 + 2);
+    append_coordinate_list(&coords, way.nodes());
+    emit_feature("w", way, "LineString", std::move(coords));
 }
 
 void ExportFormatJSON::area(const osmium::Area& area) {
-    start_feature("a", area.id());
-    create_multipolygon(area);
-    finish_feature(area);
-}
-
-void ExportFormatJSON::rollback_uncomitted() {
-    m_buffer.resize(m_committed_size);
+    std::string coords;
+    coords += '[';
+    for (const auto& outer_ring : area.outer_rings()) {
+        coords += '[';
+        append_coordinate_list(&coords, outer_ring);
+        for (const auto& inner_ring : area.inner_rings(outer_ring)) {
+            coords += ',';
+            append_coordinate_list(&coords, inner_ring);
+        }
+        coords += "],";
+    }
+    coords.pop_back(); // remove trailing comma
+    coords += ']';
+    emit_feature("a", area, "MultiPolygon", std::move(coords));
 }
 
 void ExportFormatJSON::close() {
     if (m_fd > 0) {
-        rollback_uncomitted();
-
-        m_buffer += '\n';
-        if (!m_text_sequence_format) {
-            m_buffer += "]}\n";
+        if (m_stream_writer) {
+            (void)m_stream_writer->finish();
+            (void)m_stream_writer->flush();
+            m_stream_writer.reset();
+        } else {
+            m_out << "\n]}\n";
         }
 
-        flush_to_output();
+        m_streambuf.flush_all();
         if (m_fsync == osmium::io::fsync::yes) {
             osmium::io::detail::reliable_fsync(m_fd);
         }
