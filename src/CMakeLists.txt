@@ -13,7 +13,7 @@ add_executable(osmium
     ${OSMIUM_SOURCE_FILES}
 )
 
-target_link_libraries(osmium ${Boost_LIBRARIES} ${OSMIUM_LIBRARIES})
+target_link_libraries(osmium ${Boost_LIBRARIES} ${OSMIUM_LIBRARIES} reflectcpp::reflectcpp)
 
 install(TARGETS osmium DESTINATION bin)
 

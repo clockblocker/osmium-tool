@@ -6,7 +6,7 @@
 #
 #-----------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.23)
 
 project(osmium VERSION 1.19.1 LANGUAGES CXX C)
 
@@ -15,12 +15,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 #-----------------------------------------------------------------------------
 #
-#  Decide which C++ version to use (Minimum/default: C++17)
+#  Decide which C++ version to use (Minimum/default: C++20 for reflect-cpp)
 #
 #-----------------------------------------------------------------------------
 
 if(NOT USE_CPP_VERSION)
-    set(USE_CPP_VERSION 17)
+    set(USE_CPP_VERSION 20)
 endif()
 message(STATUS "Use C++ version: ${USE_CPP_VERSION}")
 
@@ -71,6 +71,26 @@ find_package(nlohmann_json)
 
 find_path(NLOHMANN_INCLUDE_DIR nlohmann/json.hpp)
 include_directories(SYSTEM ${NLOHMANN_INCLUDE_DIR})
+
+include(FetchContent)
+set(REFLECTCPP_JSON ON CACHE BOOL "" FORCE)
+set(REFLECTCPP_NLOHMANN ON CACHE BOOL "" FORCE)
+set(REFLECTCPP_USE_BUNDLED_DEPENDENCIES ON CACHE BOOL "" FORCE)
+set(REFLECTCPP_USE_VCPKG OFF CACHE BOOL "" FORCE)
+set(REFLECTCPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(REFLECTCPP_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(REFLECTCPP_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    reflectcpp
+    GIT_REPOSITORY https://github.com/clockblocker/reflect-cpp.git
+    GIT_TAG showcase/all-lanes
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(reflectcpp)
+get_target_property(_rfl_inc reflectcpp INTERFACE_INCLUDE_DIRECTORIES)
+if(_rfl_inc)
+    set_target_properties(reflectcpp PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_rfl_inc}")
+endif()
 
 if(WITH_LZ4)
     find_package(LZ4)
