@@ -52,6 +52,10 @@ struct CatOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandCat::describe_options() const {
+    return describe_command_options<CatOptions>();
+}
+
 bool CommandCat::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<CatOptions>(arguments);
     if (!opts) {

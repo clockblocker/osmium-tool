@@ -31,8 +31,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/index/map/all.hpp>
 #include <osmium/io/writer_options.hpp>
 
-#include <nlohmann/json.hpp>
-
 #include <string>
 #include <vector>
 
@@ -63,8 +61,6 @@ class CommandExport : public CommandWithSingleOSMInput {
     bool m_stop_on_error = false;
 
     void canonicalize_output_format();
-    void parse_attributes(const nlohmann::json& attributes);
-    void parse_format_options(const nlohmann::json& options);
     void parse_config_file();
 
 public:
@@ -74,6 +70,8 @@ public:
     }
 
     bool setup(const std::vector<std::string>& arguments) override final;
+
+    osmium_cli::CommandSpec describe_options() const override final;
 
     void show_arguments() override final;
 

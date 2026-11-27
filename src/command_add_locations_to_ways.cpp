@@ -61,6 +61,10 @@ struct AddLocationsToWaysOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandAddLocationsToWays::describe_options() const {
+    return describe_command_options<AddLocationsToWaysOptions>();
+}
+
 bool CommandAddLocationsToWays::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<AddLocationsToWaysOptions>(arguments);
     if (!opts) {

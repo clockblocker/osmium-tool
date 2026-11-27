@@ -674,6 +674,10 @@ struct FileinfoOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandFileinfo::describe_options() const {
+    return describe_command_options<FileinfoOptions>();
+}
+
 bool CommandFileinfo::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<FileinfoOptions>(arguments);
     if (!opts) {

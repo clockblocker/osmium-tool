@@ -65,4 +65,5 @@ check_extract_opl(antimeridian-alaska-east-json-no-feature w42394837.osm w423948
 
 #-----------------------------------------------------------------------------
 check_extract(simple_way_starts_outside input-way-starts-outside.osm output-simple-way-starts-outside.osm "-s simple")
+do_test(extract-print-config-schema "osmium extract --print-config-schema" "json-schema.org/draft/2020-12/schema")
 

@@ -193,6 +193,10 @@ struct RenumberOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandRenumber::describe_options() const {
+    return describe_command_options<RenumberOptions>();
+}
+
 bool CommandRenumber::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<RenumberOptions>(arguments);
     if (!opts) {

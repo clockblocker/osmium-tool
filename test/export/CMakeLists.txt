@@ -71,4 +71,7 @@ check_export(c-tag-null    "-E -f text -c export/config-tag-null.json" way.osm w
 
 check_export(pg-untagged "-f pg --keep-untagged" input.osm output-untagged.pg)
 
+do_test(export-print-default-config "osmium export --print-default-config" "\"linear_tags\": true")
+do_test(export-print-config-schema  "osmium export --print-config-schema"  "json-schema.org/draft/2020-12/schema")
+
 #-----------------------------------------------------------------------------

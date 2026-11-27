@@ -58,6 +58,10 @@ struct GetParentsOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandGetParents::describe_options() const {
+    return describe_command_options<GetParentsOptions>();
+}
+
 bool CommandGetParents::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<GetParentsOptions>(arguments);
     if (!opts) {

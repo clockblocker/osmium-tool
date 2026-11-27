@@ -55,6 +55,10 @@ struct CheckRefsOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandCheckRefs::describe_options() const {
+    return describe_command_options<CheckRefsOptions>();
+}
+
 bool CommandCheckRefs::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<CheckRefsOptions>(arguments);
     if (!opts) {

@@ -6,6 +6,8 @@
 #include <rfl.hpp>
 #include <rfl/cli.hpp>
 
+#include <algorithm>
+#include <cstddef>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -102,6 +104,101 @@ std::optional<Opts> parse_command_options(const Cmd& cmd,
     }
 
     return std::move(std::get<Opts>(*result));
+}
+
+struct OptionMeta {
+    std::string long_name;
+    std::string short_name;
+    std::string group;
+    std::string description;
+    std::string value_placeholder;
+    std::optional<std::string> default_value;
+    std::vector<std::string> choices;
+    bool takes_value = false;
+    bool is_repeatable = false;
+    bool is_required = false;
+};
+
+struct PositionalMeta {
+    std::string name;
+    bool is_variadic = false;
+};
+
+struct CommandSpec {
+    std::string name;
+    std::string description;
+    std::string synopsis;
+    std::vector<OptionMeta> options;
+    std::vector<PositionalMeta> positionals;
+};
+
+// NOTE (reflect-cpp gap): reflect-cpp does not yet expose a public CLI
+// reflection/metadata API. We have to reach into rfl::cli::internal
+// (cached_app_options, UsageWalker, builtin_usage_args) AND inspect
+// options.positionals separately because UsageWalker omits rfl::Hidden fields
+// (which osmium-tool uses to hide positional fields from the options list).
+template <class Opts>
+CommandSpec describe_options(const std::string& command_name,
+                             const std::string& description,
+                             const std::string& synopsis) {
+    using ProcessorsType = rfl::cli::internal::cli_processors_t<OsmiumCli>;
+    constexpr auto delimiter = rfl::cli::internal::list_delimiter_v<ProcessorsType>;
+    const auto& [options, builtin] =
+        rfl::cli::internal::cached_app_options<Opts, ProcessorsType, /*_all_paths=*/true>();
+
+    auto walker = rfl::cli::internal::UsageWalker<ProcessorsType>(&options, delimiter);
+    auto builtin_args = rfl::cli::internal::builtin_usage_args(builtin, "COMMON OPTIONS");
+    auto fields = walker.template collect<Opts>();
+
+    std::vector<rfl::cli::internal::UsageArg> merged;
+    merged.reserve(builtin_args.size() + fields.size());
+    const auto common_pos = std::find_if(
+        fields.begin(), fields.end(),
+        [](const rfl::cli::internal::UsageArg& arg) { return arg.group == "COMMON OPTIONS"; });
+    if (common_pos != fields.end()) {
+        merged.insert(merged.end(), fields.begin(), common_pos);
+        merged.insert(merged.end(), builtin_args.begin(), builtin_args.end());
+        merged.insert(merged.end(), common_pos, fields.end());
+    } else {
+        merged.insert(merged.end(), builtin_args.begin(), builtin_args.end());
+        merged.insert(merged.end(), fields.begin(), fields.end());
+    }
+
+    CommandSpec spec;
+    spec.name = command_name;
+    spec.description = description;
+    spec.synopsis = synopsis;
+
+    for (const auto& arg : merged) {
+        if (arg.positional) {
+            continue;
+        }
+        const bool takes_value = !arg.bare && arg.kind != rfl::cli::internal::OptionKind::flag;
+        spec.options.push_back(OptionMeta{
+            .long_name = arg.name,
+            .short_name = arg.short_name,
+            .group = arg.group.empty() ? std::string{"COMMAND OPTIONS"} : arg.group,
+            .description = arg.description,
+            .value_placeholder = takes_value
+                ? rfl::cli::internal::usage_value_to_string(arg, delimiter)
+                : std::string{},
+            .default_value = arg.default_value,
+            .choices = arg.choices,
+            .takes_value = takes_value,
+            .is_repeatable = arg.is_list,
+            .is_required = arg.required,
+        });
+    }
+
+    for (const auto& pos_name : options.positionals) {
+        const auto opt = options.find_long(pos_name);
+        spec.positionals.push_back(PositionalMeta{
+            .name = pos_name,
+            .is_variadic = opt.is_list,
+        });
+    }
+
+    return spec;
 }
 
 } // namespace osmium_cli

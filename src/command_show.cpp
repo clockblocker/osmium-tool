@@ -81,6 +81,10 @@ struct ShowOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandShow::describe_options() const {
+    return describe_command_options<ShowOptions>();
+}
+
 bool CommandShow::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<ShowOptions>(arguments);
     if (!opts) {

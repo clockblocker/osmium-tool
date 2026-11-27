@@ -54,6 +54,10 @@ struct CreateLocationsIndexOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandCreateLocationsIndex::describe_options() const {
+    return describe_command_options<CreateLocationsIndexOptions>();
+}
+
 bool CommandCreateLocationsIndex::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<CreateLocationsIndexOptions>(arguments);
     if (!opts) {

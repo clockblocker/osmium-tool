@@ -68,6 +68,10 @@ struct GetIdOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandGetId::describe_options() const {
+    return describe_command_options<GetIdOptions>();
+}
+
 bool CommandGetId::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<GetIdOptions>(arguments);
     if (!opts) {
