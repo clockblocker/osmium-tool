@@ -214,6 +214,10 @@ struct ExportOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandExport::describe_options() const {
+    return describe_command_options<ExportOptions>();
+}
+
 bool CommandExport::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<ExportOptions>(arguments);
     if (!opts) {

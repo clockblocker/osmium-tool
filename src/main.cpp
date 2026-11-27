@@ -20,6 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 */
 
+#include "cli_codegen.hpp"
 #include "cmd.hpp"
 #include "exception.hpp"
 
@@ -67,18 +68,40 @@ int main(int argc, char* argv[]) {
         arguments.push_back(argv[i]);
     }
 
+    bool generate_completions_mode = false;
+    std::string completions_format;
+    std::string completions_command_filter;
+
     if (command == "osmium" || command == "osmium.exe") {
         if (arguments.empty()) {
             command = "help";
         } else {
             if (arguments.front() == "--help" || arguments.front() == "-h") {
                 command = "help";
+                arguments.erase(arguments.begin());
             } else if (arguments.front() == "--version") {
                 command = "version";
+                arguments.erase(arguments.begin());
+            } else if (arguments.front() == "--generate-completions") {
+                if (arguments.size() < 2) {
+                    std::cerr << "Missing format for --generate-completions. Expected one of: zsh, bash, man-options, json.\n";
+                    return return_code::fatal;
+                }
+                generate_completions_mode = true;
+                completions_format = arguments[1];
+                if (arguments.size() >= 3) {
+                    completions_command_filter = arguments[2];
+                }
+            } else if (arguments.front().rfind("--generate-completions=", 0) == 0) {
+                generate_completions_mode = true;
+                completions_format = arguments.front().substr(23);
+                if (arguments.size() >= 2) {
+                    completions_command_filter = arguments[1];
+                }
             } else {
                 command = arguments.front();
+                arguments.erase(arguments.begin());
             }
-            arguments.erase(arguments.begin());
         }
     } else {
         if (command.substr(0, 7) == "osmium-") {
@@ -86,7 +109,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (command == "version") {
+    if (command == "version" && !generate_completions_mode) {
         std::cout << get_osmium_long_version() << '\n'
                   << get_libosmium_version() << '\n'
                   << "Supported PBF compression types:";
@@ -105,6 +128,17 @@ int main(int argc, char* argv[]) {
 
     CommandFactory command_factory;
     register_commands(command_factory);
+
+    if (generate_completions_mode) {
+        try {
+            std::cout << osmium_cli::generate_completions(command_factory, completions_format, completions_command_filter);
+            return return_code::okay;
+        } catch (const std::exception& e) {
+            std::cerr << e.what() << '\n';
+            return return_code::fatal;
+        }
+    }
+
     std::unique_ptr<Command> cmd = command_factory.create_command(command);
 
     if (!cmd) {

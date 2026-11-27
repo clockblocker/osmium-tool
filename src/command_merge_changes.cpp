@@ -54,6 +54,10 @@ struct MergeChangesOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandMergeChanges::describe_options() const {
+    return describe_command_options<MergeChangesOptions>();
+}
+
 bool CommandMergeChanges::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<MergeChangesOptions>(arguments);
     if (!opts) {

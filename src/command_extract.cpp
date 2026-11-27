@@ -464,6 +464,10 @@ struct ExtractOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandExtract::describe_options() const {
+    return describe_command_options<ExtractOptions>();
+}
+
 bool CommandExtract::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<ExtractOptions>(arguments);
     if (!opts) {

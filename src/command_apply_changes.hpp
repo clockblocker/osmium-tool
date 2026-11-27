@@ -55,6 +55,8 @@ public:
 
     bool setup(const std::vector<std::string>& arguments) override final;
 
+    osmium_cli::CommandSpec describe_options() const override final;
+
     void show_arguments() override final;
 
     bool run() override final;

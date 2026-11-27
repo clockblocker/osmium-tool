@@ -67,6 +67,10 @@ struct DiffOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandDiff::describe_options() const {
+    return describe_command_options<DiffOptions>();
+}
+
 bool CommandDiff::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<DiffOptions>(arguments);
     if (!opts) {

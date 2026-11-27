@@ -274,6 +274,7 @@ SET(OSMIUM_COMMANDS
 )
 
 set(OSMIUM_SOURCE_FILES
+    cli_codegen.cpp
     cmd.cpp
     cmd_factory.cpp
     id_file.cpp

@@ -53,6 +53,10 @@ struct QueryLocationsIndexOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandQueryLocationsIndex::describe_options() const {
+    return describe_command_options<QueryLocationsIndexOptions>();
+}
+
 bool CommandQueryLocationsIndex::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<QueryLocationsIndexOptions>(arguments);
     if (!opts) {

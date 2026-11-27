@@ -55,6 +55,10 @@ struct DeriveChangesOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandDeriveChanges::describe_options() const {
+    return describe_command_options<DeriveChangesOptions>();
+}
+
 bool CommandDeriveChanges::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<DeriveChangesOptions>(arguments);
     if (!opts) {

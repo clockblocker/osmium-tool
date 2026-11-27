@@ -65,6 +65,10 @@ struct ChangesetFilterOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandChangesetFilter::describe_options() const {
+    return describe_command_options<ChangesetFilterOptions>();
+}
+
 bool CommandChangesetFilter::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<ChangesetFilterOptions>(arguments);
     if (!opts) {

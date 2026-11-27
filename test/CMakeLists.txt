@@ -13,6 +13,7 @@ include_directories(../include)
 
 set(ALL_UNIT_TESTS
     cat/test_setup.cpp
+    cli/test_cli_metadata.cpp
     config/test_config_ssot.cpp
     diff/test_setup.cpp
     extract/test_unit.cpp
@@ -24,7 +25,7 @@ foreach(_source_file ${OSMIUM_SOURCE_FILES})
     list(APPEND ALL_COMMANDS "../src/${_source_file}")
 endforeach()
 
-add_executable(unit_tests unit_tests.cpp ${ALL_COMMANDS} ${ALL_UNIT_TESTS} ${PROJECT_BINARY_DIR}/src/version.cpp)
+add_executable(unit_tests unit_tests.cpp ../src/commands.cpp ${ALL_COMMANDS} ${ALL_UNIT_TESTS} ${PROJECT_BINARY_DIR}/src/version.cpp)
 target_link_libraries(unit_tests ${OSMIUM_LIBRARIES} reflectcpp::reflectcpp)
 add_test(NAME unit_tests COMMAND unit_tests WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 

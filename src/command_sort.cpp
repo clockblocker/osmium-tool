@@ -56,6 +56,10 @@ struct SortOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandSort::describe_options() const {
+    return describe_command_options<SortOptions>();
+}
+
 bool CommandSort::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<SortOptions>(arguments);
     if (!opts) {

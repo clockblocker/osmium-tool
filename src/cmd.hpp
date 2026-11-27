@@ -106,8 +106,14 @@ public:
     // The command line usage synopsis of the command.
     virtual const char* synopsis() const noexcept = 0;
 
+    // Structured CLI metadata for completion, man-page, and catalog codegen.
+    virtual osmium_cli::CommandSpec describe_options() const;
+
     template <class Opts>
     std::optional<Opts> parse_options(const std::vector<std::string>& arguments) const;
+
+    template <class Opts>
+    osmium_cli::CommandSpec describe_command_options() const;
 
     void setup_common(const osmium_cli::CommonOptions& opts);
     void setup_common(const osmium_cli::CommonOptionsNoProgress& opts);
@@ -295,6 +301,11 @@ public:
 template <class Opts>
 std::optional<Opts> Command::parse_options(const std::vector<std::string>& arguments) const {
     return osmium_cli::parse_command_options<Opts>(*this, m_command_factory.get_description(name()), arguments);
+}
+
+template <class Opts>
+osmium_cli::CommandSpec Command::describe_command_options() const {
+    return osmium_cli::describe_options<Opts>(name(), m_command_factory.get_description(name()), synopsis());
 }
 
 void register_commands(CommandFactory& cmd_factory);

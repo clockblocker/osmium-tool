@@ -57,6 +57,10 @@ struct TimeFilterOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandTimeFilter::describe_options() const {
+    return describe_command_options<TimeFilterOptions>();
+}
+
 bool CommandTimeFilter::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<TimeFilterOptions>(arguments);
     if (!opts) {

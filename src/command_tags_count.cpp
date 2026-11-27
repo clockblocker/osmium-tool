@@ -124,6 +124,10 @@ struct TagsCountOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandTagsCount::describe_options() const {
+    return describe_command_options<TagsCountOptions>();
+}
+
 bool CommandTagsCount::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<TagsCountOptions>(arguments);
     if (!opts) {

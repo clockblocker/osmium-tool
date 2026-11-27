@@ -35,6 +35,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <iostream>
 #include <vector>
 
+osmium_cli::CommandSpec Command::describe_options() const {
+    return osmium_cli::CommandSpec{
+        .name = name(),
+        .description = m_command_factory.get_description(name()),
+        .synopsis = synopsis(),
+        .options = {},
+        .positionals = {},
+    };
+}
+
 void Command::setup_common(const osmium_cli::CommonOptions& opts) {
     if (opts.verbose) {
         m_vout.verbose(true);

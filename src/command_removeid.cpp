@@ -56,6 +56,10 @@ struct RemoveIdOptions {
 
 } // anonymous namespace
 
+osmium_cli::CommandSpec CommandRemoveId::describe_options() const {
+    return describe_command_options<RemoveIdOptions>();
+}
+
 bool CommandRemoveId::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<RemoveIdOptions>(arguments);
     if (!opts) {
