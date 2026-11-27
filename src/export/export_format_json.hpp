@@ -28,35 +28,49 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/fwd.hpp>
 #include <osmium/io/writer_options.hpp>
 
-#include <nlohmann/json.hpp>
+#include <rfl/json.hpp>
+#include <rfl/json/Raw.hpp>
+#include <rfl/json/stream.hpp>
 
+#include <optional>
+#include <ostream>
+#include <streambuf>
 #include <string>
 
 class ExportFormatJSON : public ExportFormat {
+
+    class FdStreamBuf : public std::streambuf {
+        int m_fd = -1;
+        std::string m_buffer;
+
+        void flush_buffer();
+
+    public:
+        FdStreamBuf() = default;
+        void set_fd(int fd);
+        void flush_all();
+
+    protected:
+        int_type overflow(int_type ch) override;
+        std::streamsize xsputn(const char* s, std::streamsize n) override;
+        int sync() override;
+    };
 
     int m_fd;
     osmium::io::fsync m_fsync;
     bool m_text_sequence_format;
     bool m_with_record_separator;
-    std::string m_buffer;
-    std::size_t m_committed_size = 0;
+    FdStreamBuf m_streambuf;
+    std::ostream m_out;
+    std::optional<rfl::json::StreamWriter<>> m_stream_writer;
 
-    void flush_to_output();
+    void emit_feature(const std::string& prefix,
+                      const osmium::OSMObject& object,
+                      const char* geom_type,
+                      std::string coordinates_json);
 
-    void rollback_uncomitted();
-
-    void add_option(const std::string& name);
-
-    void start_feature(const std::string& prefix, osmium::object_id_type id);
-    void add_attributes(const osmium::OSMObject& object);
-    void finish_feature(const osmium::OSMObject& object);
-
-    void create_coordinate(const osmium::Location& location);
-    void create_coordinate_list(const osmium::NodeRefList& nrl);
-
-    void create_point(const osmium::Node& node);
-    void create_linestring(const osmium::Way& way);
-    void create_multipolygon(const osmium::Area& area);
+    static void append_coordinate_pair(std::string* buffer, const osmium::Location& location);
+    static void append_coordinate_list(std::string* buffer, const osmium::NodeRefList& nrl);
 
 public:
 
