@@ -37,8 +37,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/string.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <algorithm>
 #include <cerrno>
 #include <cstdlib>
@@ -180,56 +178,43 @@ void CommandRenumber::show_index(const std::string& type) {
     m_id_map(t).print(m_id_map(t).start_id());
 }
 
+namespace {
+
+struct RenumberOptions {
+    osmium_cli::CmdShortOpt<"i", "Index directory", osmium_cli::OptStr> index_directory;
+    osmium_cli::CmdShortOpt<"t", "Renumber only objects of given type (node, way, relation)", osmium_cli::OptStrVec> object_type;
+    osmium_cli::CmdOpt<"Show contents of index file", osmium_cli::OptStr> show_index;
+    osmium_cli::CmdShortOpt<"s", "Comma separated list of first node, way, and relation id to use (default: 1,1,1)", osmium_cli::OptStr> start_id;
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandRenumber::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("index-directory,i", po::value<std::string>(), "Index directory")
-    ("object-type,t", po::value<std::vector<std::string>>(), "Renumber only objects of given type (node, way, relation)")
-    ("show-index", po::value<std::string>(), "Show contents of index file")
-    ("start-id,s", po::value<std::string>(), "Comma separated list of first node, way, and relation id to use (default: 1,1,1)")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "Input file")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (vm.count("index-directory")) {
-        m_index_directory = vm["index-directory"].as<std::string>();
-    }
-
-    if (vm.count("show-index")) {
-        show_index(vm["show-index"].as<std::string>());
+    const auto opts = parse_options<RenumberOptions>(arguments);
+    if (!opts) {
         return false;
     }
 
-    if (!setup_common(vm, desc)) {
+    if (const auto& dir = rfl::unwrap(opts->index_directory)) {
+        m_index_directory = *dir;
+    }
+
+    if (const auto& idx = rfl::unwrap(opts->show_index)) {
+        show_index(*idx);
         return false;
     }
-    setup_progress(vm);
-    setup_object_type_nwr(vm);
-    setup_input_file(vm);
-    setup_output_file(vm);
 
-    if (vm.count("start-id")) {
-        set_start_ids(vm["start-id"].as<std::string>());
+    setup_common(opts->common());
+    setup_object_type_nwr(rfl::unwrap(opts->object_type));
+    setup_input_file(opts->input(), rfl::unwrap(opts->positionals().input_filename));
+    setup_output_file(opts->output());
+
+    if (const auto& s = rfl::unwrap(opts->start_id)) {
+        set_start_ids(*s);
     }
 
     return true;

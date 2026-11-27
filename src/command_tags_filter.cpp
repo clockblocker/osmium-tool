@@ -35,8 +35,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/progress_bar.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -85,68 +83,54 @@ void CommandTagsFilter::read_expressions_file(const std::string& file_name) {
     }
 }
 
+namespace {
+
+struct TagsFilterOptions {
+    osmium_cli::CmdShortOpt<"e", "Read filter expressions from file", osmium_cli::OptStr> expressions;
+    osmium_cli::CmdShortOpt<"i", "Invert the sense of matching, exclude objects with matching tags", osmium_cli::Flag> invert_match = false;
+    osmium_cli::CmdShortOpt<"R", "Omit referenced objects", osmium_cli::Flag> omit_referenced = false;
+    osmium_cli::CmdShortOpt<"t", "Remove tags from non-matching objects", osmium_cli::Flag> remove_tags = false;
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> input_filename;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStrVec>> expression_list;
+};
+
+} // anonymous namespace
+
 bool CommandTagsFilter::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("expressions,e", po::value<std::string>(), "Read filter expressions from file")
-    ("invert-match,i", "Invert the sense of matching, exclude objects with matching tags")
-    ("omit-referenced,R", "Omit referenced objects")
-    ("remove-tags,t", "Remove tags from non-matching objects")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "OSM input file")
-    ("expression-list", po::value<std::vector<std::string>>(), "Filter expressions")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-    positional.add("expression-list", -1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<TagsFilterOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_input_file(vm);
-    setup_output_file(vm);
 
-    if (vm.count("omit-referenced")) {
+    setup_common(opts->common());
+    setup_input_file(opts->input(), rfl::unwrap(opts->input_filename));
+    setup_output_file(opts->output());
+
+    if (rfl::unwrap(opts->omit_referenced)) {
         m_add_referenced_objects = false;
     } else if (m_input_filename == "-") {
         throw argument_error{"Can not read OSM input from STDIN (unless --omit-referenced/-R option is used)."};
     }
 
-    if (vm.count("invert-match")) {
+    if (rfl::unwrap(opts->invert_match)) {
         m_invert_match = true;
     }
 
-    if (vm.count("remove-tags")) {
+    if (rfl::unwrap(opts->remove_tags)) {
         m_remove_tags = true;
     }
 
-    if (vm.count("expression-list")) {
-        for (const auto& e : vm["expression-list"].as<std::vector<std::string>>()) {
+    if (const auto& exprs = rfl::unwrap(opts->expression_list)) {
+        for (const auto& e : *exprs) {
             parse_and_add_expression(e);
         }
     }
 
-    if (vm.count("expressions")) {
-        read_expressions_file(vm["expressions"].as<std::string>());
+    if (const auto& expr_file = rfl::unwrap(opts->expressions)) {
+        read_expressions_file(*expr_file);
     }
 
     return true;

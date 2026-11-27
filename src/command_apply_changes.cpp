@@ -43,8 +43,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/verbose_output.hpp>
 #include <osmium/visitor.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <algorithm>
 #include <iterator>
 #include <stdexcept>
@@ -54,61 +52,47 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using location_index_type = osmium::index::map::SparseMemArray<osmium::unsigned_object_id_type, osmium::Location>;
 
+namespace {
+
+struct ApplyChangesOptions {
+    osmium_cli::CmdOpt<"Format of the change file(s)", osmium_cli::OptStr> change_file_format;
+    osmium_cli::CmdOpt<"Redact (patch) OSM files", osmium_cli::Flag> redact = false;
+    osmium_cli::CmdShortOpt<"H", "Apply changes to history file", osmium_cli::Flag> with_history = false;
+    osmium_cli::CmdOpt<"Expect and update locations on ways", osmium_cli::Flag> locations_on_ways = false;
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> input_filename;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStrVec>> change_filenames;
+};
+
+} // anonymous namespace
+
 bool CommandApplyChanges::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("change-file-format", po::value<std::string>(), "Format of the change file(s)")
-    ("redact",            "Redact (patch) OSM files")
-    ("with-history,H",    "Apply changes to history file")
-    ("locations-on-ways", "Expect and update locations on ways")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "OSM input file")
-    ("change-filenames", po::value<std::vector<std::string>>(), "OSM change input files")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-    positional.add("change-filenames", -1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<ApplyChangesOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_input_file(vm);
-    setup_output_file(vm);
 
-    if (vm.count("change-filenames")) {
-        m_change_filenames = vm["change-filenames"].as<std::vector<std::string>>();
+    setup_common(opts->common());
+    setup_input_file(opts->input(), rfl::unwrap(opts->input_filename));
+    setup_output_file(opts->output());
+
+    if (const auto& changes = rfl::unwrap(opts->change_filenames)) {
+        m_change_filenames = *changes;
     } else {
         throw argument_error{"Need data file and at least one change file on the command line."};
     }
 
-    if (vm.count("change-file-format")) {
-        m_change_file_format = vm["change-file-format"].as<std::string>();
+    if (const auto& fmt = rfl::unwrap(opts->change_file_format)) {
+        m_change_file_format = *fmt;
     }
 
-    if (vm.count("locations-on-ways")) {
+    if (rfl::unwrap(opts->locations_on_ways)) {
         m_locations_on_ways = true;
     }
 
-    if (vm.count("with-history")) {
+    if (rfl::unwrap(opts->with_history)) {
         if (m_locations_on_ways) {
             throw argument_error{"Can not use --with-history/-H and --locations-on-ways together."};
         }
@@ -125,7 +109,7 @@ bool CommandApplyChanges::setup(const std::vector<std::string>& arguments) {
         }
     }
 
-    if (vm.count("redact")) {
+    if (rfl::unwrap(opts->redact)) {
         if (m_locations_on_ways) {
             throw argument_error{"Can not use --redact and --locations-on-ways together."};
         }

@@ -30,12 +30,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <string>
 #include <vector>
 
-void OptionClean::setup(const boost::program_options::variables_map& vm) {
-    if (vm.count("clean")) {
-        setup(std::optional<std::vector<std::string>>{vm["clean"].as<std::vector<std::string>>()});
-    }
-}
-
 void OptionClean::setup(const std::optional<std::vector<std::string>>& clean_attrs) {
     if (clean_attrs) {
         for (const auto& c : *clean_attrs) {

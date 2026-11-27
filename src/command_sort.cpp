@@ -38,47 +38,36 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/verbose_output.hpp>
 #include <osmium/visitor.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
 
+namespace {
+
+struct SortOptions {
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::MultipleInputsOptions> input;
+    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::Hidden<rfl::Short<"s", osmium_cli::OptStr>> strategy;
+    rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandSort::setup(const std::vector<std::string>& arguments) {
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_multiple_inputs_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filenames", po::value<std::vector<std::string>>(), "OSM input files")
-    ("strategy,s", po::value<std::string>(), "Strategy (default: simple)")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filenames", -1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<SortOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_input_files(vm);
-    setup_output_file(vm);
 
-    if (vm.count("strategy")) {
-        m_strategy = vm["strategy"].as<std::string>();
+    setup_common(opts->common());
+    setup_input_files(opts->input(), rfl::unwrap(opts->positionals().input_filenames));
+    setup_output_file(opts->output());
+
+    if (const auto& s = rfl::unwrap(opts->strategy)) {
+        m_strategy = *s;
         if (m_strategy != "simple" && m_strategy != "multipass") {
             throw argument_error{"Unknown strategy: " + m_strategy};
         }

@@ -32,8 +32,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/memory/buffer.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
@@ -65,68 +63,58 @@ void CommandShow::setup_pager_from_env() noexcept {
 }
 #endif
 
-bool CommandShow::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("format-debug,d", "Use debug format")
-    ("format-opl,o", "Use OPL format")
-    ("format-xml,x", "Use XML format")
+namespace {
+
+struct ShowOptions {
+    osmium_cli::CmdShortOpt<"d", "Use debug format", osmium_cli::Flag> format_debug = false;
+    osmium_cli::CmdShortOpt<"o", "Use OPL format", osmium_cli::Flag> format_opl = false;
+    osmium_cli::CmdShortOpt<"x", "Use XML format", osmium_cli::Flag> format_xml = false;
 #ifndef _WIN32
-    ("no-pager", "Do not run pager program")
+    osmium_cli::CmdOpt<"Do not run pager program", osmium_cli::Flag> no_pager = false;
 #endif
-    ("object-type,t", po::value<std::vector<std::string>>(), "Read only objects of given type (node, way, relation, changeset)")
-    ("output-format,f", po::value<std::string>(), "Format of output file")
-    ;
+    osmium_cli::CmdShortOpt<"t", "Read only objects of given type (node, way, relation, changeset)", osmium_cli::OptStrVec> object_type;
+    osmium_cli::CmdShortOpt<"f", "Format of output file", osmium_cli::OptStr> output_format;
+    rfl::Flatten<osmium_cli::CommonOptionsNoProgress> common;
+    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
+};
 
-    const po::options_description opts_common{add_common_options(false)};
-    const po::options_description opts_input{add_single_input_options()};
+} // anonymous namespace
 
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "Input file")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+bool CommandShow::setup(const std::vector<std::string>& arguments) {
+    const auto opts = parse_options<ShowOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_object_type_nwrc(vm);
-    setup_input_file(vm);
+
+    setup_common(opts->common());
+    setup_object_type_nwrc(rfl::unwrap(opts->object_type));
+    setup_input_file(opts->input(), rfl::unwrap(opts->positionals().input_filename));
 
 #ifndef _WIN32
-    if (vm.count("no-pager")) {
+    if (rfl::unwrap(opts->no_pager)) {
         m_pager = "";
     } else {
         setup_pager_from_env();
     }
 #endif
 
-    if (vm.count("output-format") &&
-        vm.count("format-debug") &&
-        vm.count("format-opl") &&
-        vm.count("format-xml")) {
+    const auto& fmt = rfl::unwrap(opts->output_format);
+    const bool fmt_debug = rfl::unwrap(opts->format_debug);
+    const bool fmt_opl = rfl::unwrap(opts->format_opl);
+    const bool fmt_xml = rfl::unwrap(opts->format_xml);
+
+    if (fmt && fmt_debug && fmt_opl && fmt_xml) {
         throw argument_error{"You can only use at most one of the following options: --output-format/-f, --format-debug/-d, --format-opl/-o, and --format-xml/-x."};
     }
 
-    if (vm.count("output-format")) {
-        m_output_format = vm["output-format"].as<std::string>();
-    } else if (vm.count("format-debug")) {
+    if (fmt) {
+        m_output_format = *fmt;
+    } else if (fmt_debug) {
         m_output_format = "debug,color=true";
-    } else if (vm.count("format-opl")) {
+    } else if (fmt_opl) {
         m_output_format = "opl";
-    } else if (vm.count("format-xml")) {
+    } else if (fmt_xml) {
         m_output_format = "xml";
     } else {
         const char* output_format_from_env = ::getenv("OSMIUM_SHOW_FORMAT"); // NOLINT(concurrency-mt-unsafe)

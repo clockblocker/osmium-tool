@@ -39,49 +39,35 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/verbose_output.hpp>
 #include <osmium/visitor.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
 
+namespace {
+
+struct AddLocationsToWaysOptions {
+    osmium_cli::CmdShortOpt<"i", "Index type for positive IDs", rfl::DefaultVal<std::string>> index_type = "flex_mem";
+    osmium_cli::CmdOpt<"Index type for negative IDs", rfl::DefaultVal<std::string>> index_type_neg = "flex_mem";
+    osmium_cli::CmdShortOpt<"I", "Show available index types", osmium_cli::Flag> show_index_types = false;
+    osmium_cli::CmdOpt<"Keep node members of relations", osmium_cli::Flag> keep_member_nodes = false;
+    osmium_cli::CmdShortOpt<"n", "Keep untagged nodes", osmium_cli::Flag> keep_untagged_nodes = false;
+    osmium_cli::CmdOpt<"Ignore missing nodes", osmium_cli::Flag> ignore_missing_nodes = false;
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::MultipleInputsOptions> input;
+    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandAddLocationsToWays::setup(const std::vector<std::string>& arguments) {
-    const std::string default_index_type{"flex_mem"};
+    const auto opts = parse_options<AddLocationsToWaysOptions>(arguments);
+    if (!opts) {
+        return false;
+    }
 
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("index-type,i", po::value<std::string>()->default_value(default_index_type), "Index type for positive IDs")
-    ("index-type-neg", po::value<std::string>()->default_value(default_index_type), "Index type for negative IDs")
-    ("show-index-types,I", "Show available index types")
-    ("keep-member-nodes", "Keep node members of relations")
-    ("keep-untagged-nodes,n", "Keep untagged nodes")
-    ("ignore-missing-nodes", "Ignore missing nodes")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_multiple_inputs_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filenames", po::value<std::vector<std::string>>(), "Input files")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filenames", -1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (vm.count("show-index-types")) {
+    if (rfl::unwrap(opts->show_index_types)) {
         const auto& map_factory = osmium::index::MapFactory<osmium::unsigned_object_id_type, osmium::Location>::instance();
         for (const auto& map_type : map_factory.map_types()) {
             std::cout << map_type << '\n';
@@ -89,30 +75,22 @@ bool CommandAddLocationsToWays::setup(const std::vector<std::string>& arguments)
         return false;
     }
 
-    if (vm.count("index-type")) {
-        m_index_type_name_pos = check_index_type(vm["index-type"].as<std::string>());
-    }
+    m_index_type_name_pos = check_index_type(rfl::unwrap(opts->index_type));
+    m_index_type_name_neg = check_index_type(rfl::unwrap(opts->index_type_neg));
 
-    if (vm.count("index-type-neg")) {
-        m_index_type_name_neg = check_index_type(vm["index-type-neg"].as<std::string>());
-    }
+    setup_common(opts->common());
+    setup_input_files(opts->input(), rfl::unwrap(opts->positionals().input_filenames));
+    setup_output_file(opts->output());
 
-    if (!setup_common(vm, desc)) {
-        return false;
-    }
-    setup_progress(vm);
-    setup_input_files(vm);
-    setup_output_file(vm);
-
-    if (vm.count("keep-untagged-nodes")) {
+    if (rfl::unwrap(opts->keep_untagged_nodes)) {
         m_keep_untagged_nodes = true;
     }
 
-    if (vm.count("keep-member-nodes")) {
+    if (rfl::unwrap(opts->keep_member_nodes)) {
         m_keep_member_nodes = true;
     }
 
-    if (vm.count("ignore-missing-nodes")) {
+    if (rfl::unwrap(opts->ignore_missing_nodes)) {
         m_ignore_missing_nodes = true;
     }
 

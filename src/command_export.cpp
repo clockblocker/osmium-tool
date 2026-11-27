@@ -44,8 +44,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <nlohmann/json.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <cctype>
 #include <fstream>
 #include <iostream>
@@ -250,50 +248,38 @@ void CommandExport::canonicalize_output_format() {
     }
 }
 
+namespace {
+
+struct ExportOptions {
+    osmium_cli::CmdShortOpt<"u", "Add unique id to each feature ('counter' or 'type_id')", osmium_cli::OptStr> add_unique_id;
+    osmium_cli::CmdShortOpt<"c", "Config file", osmium_cli::OptStr> config;
+    osmium_cli::CmdShortOpt<"x", "Output format options", osmium_cli::OptStrVec> format_option;
+    osmium_cli::CmdOpt<"Call fsync after writing file", osmium_cli::Flag> fsync = false;
+    osmium_cli::CmdOpt<"Geometry types that should be written (default: 'point,linestring,polygon')", osmium_cli::OptStr> geometry_types;
+    osmium_cli::CmdShortOpt<"i", "Index type to use", rfl::DefaultVal<std::string>> index_type = "flex_mem";
+    osmium_cli::CmdShortOpt<"n", "Keep features that don't have any tags", osmium_cli::Flag> keep_untagged = false;
+    osmium_cli::CmdShortOpt<"o", "Output file (default: STDOUT)", osmium_cli::OptStr> output;
+    osmium_cli::CmdShortOpt<"f", "Output format (default depends on output file suffix)", osmium_cli::OptStr> output_format;
+    osmium_cli::CmdShortOpt<"O", "Allow existing output file to be overwritten", osmium_cli::Flag> overwrite = false;
+    osmium_cli::CmdShortOpt<"C", "Print default config on STDOUT", osmium_cli::Flag> print_default_config = false;
+    osmium_cli::CmdShortOpt<"e", "Output any geometry errors on STDOUT", osmium_cli::Flag> show_errors = false;
+    osmium_cli::CmdShortOpt<"E", "Stop on the first error encountered", osmium_cli::Flag> stop_on_error = false;
+    osmium_cli::CmdShortOpt<"I", "Show available index types", osmium_cli::Flag> show_index_types = false;
+    osmium_cli::CmdShortOpt<"a", "Comma-separated list of attributes to add to the output (default: none)", osmium_cli::OptStr> attributes;
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandExport::setup(const std::vector<std::string>& arguments) {
-    const std::string default_index_type{"flex_mem"};
+    const auto opts = parse_options<ExportOptions>(arguments);
+    if (!opts) {
+        return false;
+    }
 
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("add-unique-id,u", po::value<std::string>(), "Add unique id to each feature ('counter' or 'type_id')")
-    ("config,c", po::value<std::string>(), "Config file")
-    ("format-option,x", po::value<std::vector<std::string>>(), "Output format options")
-    ("fsync", "Call fsync after writing file")
-    ("geometry-types", po::value<std::string>(), "Geometry types that should be written (default: 'point,linestring,polygon')")
-    ("index-type,i", po::value<std::string>()->default_value(default_index_type), "Index type to use")
-    ("keep-untagged,n", "Keep features that don't have any tags")
-    ("output,o", po::value<std::string>(), "Output file (default: STDOUT)")
-    ("output-format,f", po::value<std::string>(), "Output format (default depends on output file suffix)")
-    ("overwrite,O", "Allow existing output file to be overwritten")
-    ("print-default-config,C", "Print default config on STDOUT")
-    ("show-errors,e", "Output any geometry errors on STDOUT")
-    ("stop-on-error,E", "Stop on the first error encountered")
-    ("show-index-types,I", "Show available index types")
-    ("attributes,a", po::value<std::string>(), "Comma-separated list of attributes to add to the output (default: none)")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "OSM input file")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (vm.count("print-default-config")) {
+    if (rfl::unwrap(opts->print_default_config)) {
         std::cout << R"({
     "attributes": {
         "type":      false,
@@ -316,7 +302,7 @@ bool CommandExport::setup(const std::vector<std::string>& arguments) {
         return false;
     }
 
-    if (vm.count("show-index-types")) {
+    if (rfl::unwrap(opts->show_index_types)) {
         const auto& map_factory = osmium::index::MapFactory<osmium::unsigned_object_id_type, osmium::Location>::instance();
         for (const auto& map_type : map_factory.map_types()) {
             std::cout << map_type << '\n';
@@ -325,14 +311,11 @@ bool CommandExport::setup(const std::vector<std::string>& arguments) {
         return false;
     }
 
-    if (!setup_common(vm, desc)) {
-        return false;
-    }
-    setup_progress(vm);
-    setup_input_file(vm);
+    setup_common(opts->common());
+    setup_input_file(opts->input(), rfl::unwrap(opts->positionals().input_filename));
 
-    if (vm.count("output")) {
-        m_output_filename = vm["output"].as<std::string>();
+    if (const auto& out = rfl::unwrap(opts->output)) {
+        m_output_filename = *out;
 
         const auto pos = m_output_filename.rfind('.');
         if (pos != std::string::npos) {
@@ -342,8 +325,8 @@ bool CommandExport::setup(const std::vector<std::string>& arguments) {
         m_output_filename = "-";
     }
 
-    if (vm.count("output-format")) {
-        m_output_format = vm["output-format"].as<std::string>();
+    if (const auto& fmt = rfl::unwrap(opts->output_format)) {
+        m_output_format = *fmt;
     }
 
     canonicalize_output_format();
@@ -363,8 +346,8 @@ bool CommandExport::setup(const std::vector<std::string>& arguments) {
         m_options.format_options.set("tags_type", "json");
     }
 
-    if (vm.count("config")) {
-        m_config_file_name = vm["config"].as<std::string>();
+    if (const auto& cfg = rfl::unwrap(opts->config)) {
+        m_config_file_name = *cfg;
 
         try {
             parse_config_file();
@@ -378,24 +361,23 @@ bool CommandExport::setup(const std::vector<std::string>& arguments) {
         }
     }
 
-    if (vm.count("add-unique-id")) {
-        const std::string value = vm["add-unique-id"].as<std::string>();
-        if (value == "counter") {
+    if (const auto& value = rfl::unwrap(opts->add_unique_id)) {
+        if (*value == "counter") {
             m_options.unique_id = unique_id_type::counter;
-        } else if (value == "type_id") {
+        } else if (*value == "type_id") {
             m_options.unique_id = unique_id_type::type_id;
         } else {
             throw argument_error{"Unknown --add-unique-id, -u setting. Use 'counter' or 'type_id'."};
         }
     }
 
-    if (vm.count("fsync")) {
+    if (rfl::unwrap(opts->fsync)) {
         m_fsync = osmium::io::fsync::yes;
     }
 
-    if (vm.count("geometry-types")) {
+    if (const auto& gt = rfl::unwrap(opts->geometry_types)) {
         m_geometry_types.clear();
-        const auto types = osmium::split_string(vm["geometry-types"].as<std::string>(), ',');
+        const auto types = osmium::split_string(*gt, ',');
         for (const auto& type : types) {
             if (type == "point") {
                 m_geometry_types.point = true;
@@ -414,8 +396,8 @@ bool CommandExport::setup(const std::vector<std::string>& arguments) {
         }
     }
 
-    if (vm.count("attributes")) {
-        const auto attrs = osmium::split_string(vm["attributes"].as<std::string>(), ',');
+    if (const auto& attr_str = rfl::unwrap(opts->attributes)) {
+        const auto attrs = osmium::split_string(*attr_str, ',');
         for (const auto& attr : attrs) {
             if (attr == "type") {
                 m_options.type = "@type";
@@ -439,29 +421,27 @@ bool CommandExport::setup(const std::vector<std::string>& arguments) {
         }
     }
 
-    if (vm.count("index-type")) {
-        m_index_type_name = check_index_type(vm["index-type"].as<std::string>(), true);
-    }
+    m_index_type_name = check_index_type(rfl::unwrap(opts->index_type), true);
 
-    if (vm.count("keep-untagged")) {
+    if (rfl::unwrap(opts->keep_untagged)) {
         m_options.keep_untagged = true;
     }
 
-    if (vm.count("overwrite")) {
+    if (rfl::unwrap(opts->overwrite)) {
         m_output_overwrite = osmium::io::overwrite::allow;
     }
 
-    if (vm.count("format-option")) {
-        for (const auto& str : vm["format-option"].as<std::vector<std::string>>()) {
+    if (const auto& fmt_opts = rfl::unwrap(opts->format_option)) {
+        for (const auto& str : *fmt_opts) {
             m_options.format_options.set(str);
         }
     }
 
-    if (vm.count("show-errors")) {
+    if (rfl::unwrap(opts->show_errors)) {
         m_show_errors = true;
     }
 
-    if (vm.count("stop-on-error")) {
+    if (rfl::unwrap(opts->stop_on_error)) {
         m_show_errors = true;
         m_stop_on_error = true;
     }

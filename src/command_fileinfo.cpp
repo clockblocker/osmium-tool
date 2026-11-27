@@ -43,8 +43,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <nlohmann/json.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -659,58 +657,47 @@ public:
 
 /*************************************************************************/
 
+namespace {
+
+struct FileinfoOptions {
+    osmium_cli::CmdShortOpt<"e", "Extended output", osmium_cli::Flag> extended = false;
+    osmium_cli::CmdShortOpt<"g", "Get value", osmium_cli::OptStr> get;
+    osmium_cli::CmdShortOpt<"G", "Show variables for --get option", osmium_cli::Flag> show_variables = false;
+    osmium_cli::CmdShortOpt<"j", "JSON output", osmium_cli::Flag> json = false;
+    osmium_cli::CmdShortOpt<"c", "Calculate CRC", osmium_cli::Flag> crc = false;
+    osmium_cli::CmdOpt<"Do not calculate CRC", osmium_cli::Flag> no_crc = false;
+    osmium_cli::CmdShortOpt<"t", "Read only objects of given type (node, way, relation, changeset)", osmium_cli::OptStrVec> object_type;
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandFileinfo::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("extended,e", "Extended output")
-    ("get,g", po::value<std::string>(), "Get value")
-    ("show-variables,G", "Show variables for --get option")
-    ("json,j", "JSON output")
-    ("crc,c", "Calculate CRC")
-    ("no-crc", "Do not calculate CRC")
-    ("object-type,t", po::value<std::vector<std::string>>(), "Read only objects of given type (node, way, relation, changeset)")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "Input file")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<FileinfoOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_object_type_nwrc(vm);
 
-    if (vm.count("extended")) {
+    setup_common(opts->common());
+    setup_object_type_nwrc(rfl::unwrap(opts->object_type));
+
+    if (rfl::unwrap(opts->extended)) {
         m_extended = true;
     }
 
-    if (vm.count("json")) {
+    if (rfl::unwrap(opts->json)) {
         m_json_output = true;
     }
 
-    if (vm.count("crc") && vm.count("no-crc")) {
+    const bool has_crc = rfl::unwrap(opts->crc);
+    const bool has_no_crc = rfl::unwrap(opts->no_crc);
+    if (has_crc && has_no_crc) {
         throw argument_error{"Can not use --crc/-c option and --no-crc at the same time."};
     }
 
-    if (m_extended && (vm.count("crc") || (m_json_output && !vm.count("no-crc")))) {
+    if (m_extended && (has_crc || (m_json_output && !has_no_crc))) {
         m_calculate_crc = true;
     }
 
@@ -761,15 +748,15 @@ bool CommandFileinfo::setup(const std::vector<std::string>& arguments) {
         "metadata.some_objects.user"
     };
 
-    if (vm.count("show-variables")) {
+    if (rfl::unwrap(opts->show_variables)) {
         std::copy(known_values.cbegin(), known_values.cend(), std::ostream_iterator<std::string>(std::cout, "\n"));
         return false;
     }
 
-    setup_input_file(vm);
+    setup_input_file(opts->input(), rfl::unwrap(opts->positionals().input_filename));
 
-    if (vm.count("get")) {
-        m_get_value = vm["get"].as<std::string>();
+    if (const auto& g = rfl::unwrap(opts->get)) {
+        m_get_value = *g;
         if (m_get_value.substr(0, 14) != "header.option.") {
             const auto& f = std::find(known_values.cbegin(), known_values.cend(), m_get_value);
             if (f == known_values.cend()) {
@@ -782,7 +769,7 @@ bool CommandFileinfo::setup(const std::vector<std::string>& arguments) {
         m_calculate_crc = (m_get_value == "data.crc32");
     }
 
-    if (vm.count("get") && vm.count("json")) {
+    if (rfl::unwrap(opts->get) && rfl::unwrap(opts->json)) {
         throw argument_error{"You can not use --get/-g and --json/-j together."};
     }
 

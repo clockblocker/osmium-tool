@@ -25,8 +25,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <osmium/memory/buffer.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <optional>
 #include <string>
 #include <vector>
@@ -47,7 +45,6 @@ class OptionClean {
 public:
     OptionClean() = default;
 
-    void setup(const boost::program_options::variables_map& vm);
     void setup(const std::optional<std::vector<std::string>>& clean_attrs);
 
     void apply_to(osmium::memory::Buffer& buffer) const {

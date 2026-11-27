@@ -48,8 +48,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <nlohmann/json.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -444,70 +442,60 @@ std::unique_ptr<ExtractStrategy> CommandExtract::make_strategy(const std::string
     throw argument_error{std::string{"Unknown extract strategy: '"} + name + "'."};
 }
 
+namespace {
+
+struct ExtractOptions {
+    osmium_cli::CmdShortOpt<"b", "Bounding box", osmium_cli::OptStr> bbox;
+    osmium_cli::CmdShortOpt<"c", "Config file", osmium_cli::OptStr> config;
+    osmium_cli::CmdShortOpt<"d", "Output directory (default: from config)", osmium_cli::OptStr> directory;
+    osmium_cli::CmdShortOpt<"S", "Set strategy option", osmium_cli::OptStrVec> option;
+    osmium_cli::CmdShortOpt<"p", "Polygon file", osmium_cli::OptStr> polygon;
+    osmium_cli::CmdShortOpt<"s", "Use named extract strategy", rfl::DefaultVal<std::string>> strategy = "complete_ways";
+    osmium_cli::CmdShortOpt<"H", "Input file and output files are history files", osmium_cli::Flag> with_history = false;
+    osmium_cli::CmdOpt<"Sets bounds (bounding box) in header", osmium_cli::Flag> set_bounds = false;
+    osmium_cli::CmdOpt<"Clean attribute (version, changeset, timestamp, uid, user)", osmium_cli::OptStrVec> clean;
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::Flatten<osmium_cli::SingleInputPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandExtract::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("bbox,b", po::value<std::string>(), "Bounding box")
-    ("config,c", po::value<std::string>(), "Config file")
-    ("directory,d", po::value<std::string>(), "Output directory (default: from config)")
-    ("option,S", po::value<std::vector<std::string>>(), "Set strategy option")
-    ("polygon,p", po::value<std::string>(), "Polygon file")
-    ("strategy,s", po::value<std::string>()->default_value("complete_ways"), "Use named extract strategy")
-    ("with-history,H", "Input file and output files are history files")
-    ("set-bounds", "Sets bounds (bounding box) in header")
-    ("clean", po::value<std::vector<std::string>>(), "Clean attribute (version, changeset, timestamp, uid, user)")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "OSM input file")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<ExtractOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_input_file(vm);
-    init_output_file(vm);
 
-    m_clean.setup(vm);
+    setup_common(opts->common());
+    setup_input_file(opts->input(), rfl::unwrap(opts->positionals().input_filename));
+    init_output_file(opts->output());
 
-    if (vm.count("config") + vm.count("bbox") + vm.count("polygon") > 1) {
+    m_clean.setup(rfl::unwrap(opts->clean));
+
+    const int mode_count = static_cast<int>(rfl::unwrap(opts->config).has_value()) +
+                           static_cast<int>(rfl::unwrap(opts->bbox).has_value()) +
+                           static_cast<int>(rfl::unwrap(opts->polygon).has_value());
+    if (mode_count > 1) {
         throw argument_error{"Can only use one of --config/-c, --bbox/-b, or --polygon/-p."};
     }
 
-    if (vm.count("with-history")) {
+    if (rfl::unwrap(opts->with_history)) {
         m_with_history = true;
     }
 
-    if (vm.count("config")) {
-        if (vm.count("directory")) {
-            set_directory(vm["directory"].as<std::string>());
+    if (const auto& cfg = rfl::unwrap(opts->config)) {
+        if (const auto& dir = rfl::unwrap(opts->directory)) {
+            set_directory(*dir);
         }
-        if (vm.count("output")) {
+        if (rfl::unwrap(opts->output().output)) {
             warning("Ignoring --output/-o option.\n");
         }
-        if (vm.count("output-format")) {
+        if (rfl::unwrap(opts->output().output_format)) {
             warning("Ignoring --output-format/-f option.\n");
         }
-        m_config_file_name = vm["config"].as<std::string>();
+        m_config_file_name = *cfg;
         const auto slash = m_config_file_name.find_last_of('/');
         if (slash != std::string::npos) {
             m_config_directory = m_config_file_name;
@@ -515,41 +503,39 @@ bool CommandExtract::setup(const std::vector<std::string>& arguments) {
         }
     }
 
-    if (vm.count("bbox")) {
-        if (vm.count("directory")) {
+    if (const auto& b = rfl::unwrap(opts->bbox)) {
+        if (rfl::unwrap(opts->directory)) {
             warning("Ignoring --directory/-d option.\n");
         }
         check_output_file();
         if (m_with_history) {
             m_output_file.set_has_multiple_object_versions(true);
         }
-        m_extracts.push_back(std::make_unique<ExtractBBox>(m_output_file, "", parse_bbox(vm["bbox"].as<std::string>(), "--box/-b")));
+        m_extracts.push_back(std::make_unique<ExtractBBox>(m_output_file, "", parse_bbox(*b, "--box/-b")));
     }
 
-    if (vm.count("polygon")) {
-        if (vm.count("directory")) {
+    if (const auto& poly = rfl::unwrap(opts->polygon)) {
+        if (rfl::unwrap(opts->directory)) {
             warning("Ignoring --directory/-d option.\n");
         }
         check_output_file();
         if (m_with_history) {
             m_output_file.set_has_multiple_object_versions(true);
         }
-        m_extracts.push_back(std::make_unique<ExtractPolygon>(m_output_file, "", m_buffer, parse_multipolygon_object("./", vm["polygon"].as<std::string>(), "", &m_buffer)));
+        m_extracts.push_back(std::make_unique<ExtractPolygon>(m_output_file, "", m_buffer, parse_multipolygon_object("./", *poly, "", &m_buffer)));
     }
 
-    if (vm.count("option")) {
-        for (const auto& option : vm["option"].as<std::vector<std::string>>()) {
+    if (const auto& strat_opts = rfl::unwrap(opts->option)) {
+        for (const auto& option : *strat_opts) {
             m_options.set(option);
         }
     }
 
-    if (vm.count("set-bounds")) {
+    if (rfl::unwrap(opts->set_bounds)) {
         m_set_bounds = true;
     }
 
-    if (vm.count("strategy")) {
-        m_strategy_name = vm["strategy"].as<std::string>();
-    }
+    m_strategy_name = rfl::unwrap(opts->strategy);
 
     return true;
 }

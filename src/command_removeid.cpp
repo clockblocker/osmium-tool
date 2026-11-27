@@ -36,58 +36,40 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/string.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
 
+namespace {
+
+struct RemoveIdOptions {
+    osmium_cli::CmdOpt<"Default item type", rfl::DefaultVal<std::string>> default_type = "node";
+    osmium_cli::CmdShortOpt<"i", "Read OSM IDs from text file", osmium_cli::OptStrVec> id_file;
+    osmium_cli::CmdShortOpt<"I", "Read OSM IDs from OSM file", osmium_cli::OptStrVec> id_osm_file;
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::SingleInputOptions> input;
+    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStr>> input_filename;
+    rfl::Hidden<rfl::Positional<osmium_cli::OptStrVec>> ids;
+};
+
+} // anonymous namespace
+
 bool CommandRemoveId::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("default-type", po::value<std::string>()->default_value("node"), "Default item type")
-    ("id-file,i", po::value<std::vector<std::string>>(), "Read OSM IDs from text file")
-    ("id-osm-file,I", po::value<std::vector<std::string>>(), "Read OSM IDs from OSM file")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_single_input_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filename", po::value<std::string>(), "OSM input file")
-    ("ids", po::value<std::vector<std::string>>(), "OSM IDs")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filename", 1);
-    positional.add("ids", -1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<RemoveIdOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_input_file(vm);
-    setup_output_file(vm);
 
-    if (vm.count("default-type")) {
-        m_default_item_type = parse_item_type(vm["default-type"].as<std::string>());
-    }
+    setup_common(opts->common());
+    setup_input_file(opts->input(), rfl::unwrap(opts->input_filename));
+    setup_output_file(opts->output());
 
-    if (vm.count("id-file")) {
-        for (const std::string& filename : vm["id-file"].as<std::vector<std::string>>()) {
+    m_default_item_type = parse_item_type(rfl::unwrap(opts->default_type));
+
+    if (const auto& id_files = rfl::unwrap(opts->id_file)) {
+        for (const std::string& filename : *id_files) {
             if (filename == "-") {
                 if (m_input_filename.empty() || m_input_filename == "-") {
                     throw argument_error{"Can not read OSM input and IDs both from STDIN."};
@@ -105,16 +87,16 @@ bool CommandRemoveId::setup(const std::vector<std::string>& arguments) {
         }
     }
 
-    if (vm.count("id-osm-file")) {
-        for (const std::string& filename : vm["id-osm-file"].as<std::vector<std::string>>()) {
+    if (const auto& osm_files = rfl::unwrap(opts->id_osm_file)) {
+        for (const std::string& filename : *osm_files) {
             m_vout << "Reading OSM ID file...\n";
             read_id_osm_file(filename, m_ids);
         }
     }
 
-    if (vm.count("ids")) {
+    if (const auto& id_list = rfl::unwrap(opts->ids)) {
         std::string sids;
-        for (const auto& s : vm["ids"].as<std::vector<std::string>>()) {
+        for (const auto& s : *id_list) {
             sids += s + " ";
         }
         for (const auto& s : osmium::split_string(sids, "\t ;,/|", true)) {

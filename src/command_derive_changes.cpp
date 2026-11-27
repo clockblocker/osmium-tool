@@ -37,62 +37,47 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/osm/object.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <boost/program_options.hpp>
-
 #include <ctime>
 #include <string>
 #include <vector>
 
+namespace {
+
+struct DeriveChangesOptions {
+    osmium_cli::CmdOpt<"Increment version of deleted objects", osmium_cli::Flag> increment_version = false;
+    osmium_cli::CmdOpt<"Keep tags (and nodes of ways, members of relations) of deleted objects", osmium_cli::Flag> keep_details = false;
+    osmium_cli::CmdOpt<"Set timestamp of deleted objects to current time", osmium_cli::Flag> update_timestamp = false;
+    rfl::Flatten<osmium_cli::CommonOptions> common;
+    rfl::Flatten<osmium_cli::MultipleInputsOptions> input;
+    rfl::Flatten<osmium_cli::OutputOptions> output;
+    rfl::Flatten<osmium_cli::MultipleInputsPositional> positionals;
+};
+
+} // anonymous namespace
+
 bool CommandDeriveChanges::setup(const std::vector<std::string>& arguments) {
-    po::options_description opts_cmd{"COMMAND OPTIONS"};
-    opts_cmd.add_options()
-    ("increment-version", "Increment version of deleted objects")
-    ("keep-details",      "Keep tags (and nodes of ways, members of relations) of deleted objects")
-    ("update-timestamp",  "Set timestamp of deleted objects to current time")
-    ;
-
-    const po::options_description opts_common{add_common_options()};
-    const po::options_description opts_input{add_multiple_inputs_options()};
-    const po::options_description opts_output{add_output_options()};
-
-    po::options_description hidden;
-    hidden.add_options()
-    ("input-filenames", po::value<std::vector<std::string>>(), "Input files")
-    ;
-
-    po::options_description desc;
-    desc.add(opts_cmd).add(opts_common).add(opts_input).add(opts_output);
-
-    po::options_description parsed_options;
-    parsed_options.add(desc).add(hidden);
-
-    po::positional_options_description positional;
-    positional.add("input-filenames", -1);
-
-    po::variables_map vm;
-    po::store(po::command_line_parser(arguments).options(parsed_options).positional(positional).run(), vm);
-    po::notify(vm);
-
-    if (!setup_common(vm, desc)) {
+    const auto opts = parse_options<DeriveChangesOptions>(arguments);
+    if (!opts) {
         return false;
     }
-    setup_progress(vm);
-    setup_input_files(vm);
-    setup_output_file(vm);
+
+    setup_common(opts->common());
+    setup_input_files(opts->input(), rfl::unwrap(opts->positionals().input_filenames));
+    setup_output_file(opts->output());
 
     if (m_input_files.size() != 2) {
         throw argument_error{"You need exactly two input files for this command."};
     }
 
-    if (vm.count("increment-version")) {
+    if (rfl::unwrap(opts->increment_version)) {
         m_increment_version = true;
     }
 
-    if (vm.count("keep-details")) {
+    if (rfl::unwrap(opts->keep_details)) {
         m_keep_details = true;
     }
 
-    if (vm.count("update-timestamp")) {
+    if (rfl::unwrap(opts->update_timestamp)) {
         m_update_timestamp = true;
     }
 

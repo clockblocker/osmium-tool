@@ -28,8 +28,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/io/pbf.hpp>
 #include <osmium/osm/location.hpp>
 
-#include <boost/program_options/errors.hpp>
-
 #include <cerrno>
 #include <exception>
 #include <iostream>
@@ -119,9 +117,6 @@ int main(int argc, char* argv[]) {
             return return_code::okay;
         }
     } catch (const cli_parse_error& e) {
-        std::cerr << "Error parsing command line: " << e.what() << '\n';
-        return return_code::fatal;
-    } catch (const boost::program_options::error& e) {
         std::cerr << "Error parsing command line: " << e.what() << '\n';
         return return_code::fatal;
     } catch (const std::exception& e) {
