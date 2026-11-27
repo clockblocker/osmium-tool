@@ -13,6 +13,7 @@ include_directories(../include)
 
 set(ALL_UNIT_TESTS
     cat/test_setup.cpp
+    config/test_config_ssot.cpp
     diff/test_setup.cpp
     extract/test_unit.cpp
     time-filter/test_setup.cpp

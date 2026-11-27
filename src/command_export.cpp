@@ -22,9 +22,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "command_export.hpp"
 
+#include "config_util.hpp"
 #include "exception.hpp"
 #include "util.hpp"
 
+#include "export/config.hpp"
 #include "export/export_format_json.hpp"
 #include "export/export_format_pg.hpp"
 #include "export/export_format_text.hpp"
@@ -42,60 +44,47 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/verbose_output.hpp>
 #include <osmium/visitor.hpp>
 
-#include <nlohmann/json.hpp>
-
 #include <cctype>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
 
-std::string get_attr_string(const nlohmann::json& object, const char* key) {
-    const auto it = object.find(key);
-    if (it == object.end()) {
-        return {};
+std::string resolve_attr_string(const osmium_export::AttributeValue& value, const char* key) {
+    if (const auto* str = std::get_if<std::string>(&value)) {
+        return *str;
     }
 
-    if (it->is_string()) {
-        return it->template get<std::string>();
-    }
-
-    if (it->is_boolean() && it->template get<bool>()) {
+    if (std::get<bool>(value)) {
         return std::string{"@"} + key;
     }
 
     return {};
 }
 
-Ruleset parse_tags_ruleset(const nlohmann::json& object, const char* key) {
+Ruleset build_tags_ruleset(const osmium_export::TagRulesValue& value) {
     Ruleset ruleset;
 
-    const auto json = object.find(key);
-    if (json == object.end() || json->is_null()) {
-        // When this is not set, the default is "other". This is later
+    if (!value) {
+        // When this is not set or null, the default is "other". This is later
         // changed to "any" if both linear_tags and area_tags are missing.
         ruleset.set_rule_type(tags_filter_rule_type::other);
         return ruleset;
     }
 
-    if (json->is_boolean()) {
-        if (json->template get<bool>()) {
-            ruleset.set_rule_type(tags_filter_rule_type::any);
-        } else {
-            ruleset.set_rule_type(tags_filter_rule_type::none);
-        }
+    if (const auto* flag = std::get_if<bool>(&*value)) {
+        ruleset.set_rule_type(*flag ? tags_filter_rule_type::any : tags_filter_rule_type::none);
         return ruleset;
     }
 
-    if (!json->is_array()) {
-        throw config_error{std::string{"'"} + key + "' member in top-level object must be false, true, null, or an array."};
-    }
-
-    if (json->empty()) {
+    const auto& list = std::get<std::vector<std::string>>(*value);
+    if (list.empty()) {
         std::cerr << "Warning! An empty array for 'linear_tags' or 'area_tags' matches any tags.\n"
                   << "         Please use 'true' instead of the array.\n";
         ruleset.set_rule_type(tags_filter_rule_type::any);
@@ -103,13 +92,7 @@ Ruleset parse_tags_ruleset(const nlohmann::json& object, const char* key) {
     }
 
     ruleset.set_rule_type(tags_filter_rule_type::list);
-
-    for (const auto& value : *json) {
-        if (!value.is_string()) {
-            throw config_error{std::string{"Array elements in '"} + key + "' must be strings."};
-        }
-
-        const auto str = value.template get<std::string>();
+    for (const auto& str : list) {
         if (!str.empty()) {
             ruleset.add_rule(str);
         }
@@ -118,104 +101,52 @@ Ruleset parse_tags_ruleset(const nlohmann::json& object, const char* key) {
     return ruleset;
 }
 
-bool parse_string_array(const nlohmann::json& object, const char* key, std::vector<std::string>* result) {
-    const auto json = object.find(key);
-    if (json == object.end()) {
-        return false;
-    }
-
-    if (!json->is_array()) {
-        throw config_error{std::string{"'"} + key + "' member in top-level object must be array."};
-    }
-
-    for (const auto& value : *json) {
-        if (!value.is_string()) {
-            throw config_error{std::string{"Array elements in '"} + key + "' must be strings."};
-        }
-
-        const auto str = value.template get<std::string>();
-        if (!str.empty()) {
-            result->emplace_back(str);
-        }
-    }
-
-    return true;
-}
-
 } // anonymous namespace
-
-void CommandExport::parse_attributes(const nlohmann::json& attributes) {
-    if (!attributes.is_object()) {
-        throw config_error{"'attributes' member must be an object."};
-    }
-
-    m_options.type      = get_attr_string(attributes, "type");
-    m_options.id        = get_attr_string(attributes, "id");
-    m_options.version   = get_attr_string(attributes, "version");
-    m_options.changeset = get_attr_string(attributes, "changeset");
-    m_options.timestamp = get_attr_string(attributes, "timestamp");
-    m_options.uid       = get_attr_string(attributes, "uid");
-    m_options.user      = get_attr_string(attributes, "user");
-    m_options.way_nodes = get_attr_string(attributes, "way_nodes");
-}
-
-void CommandExport::parse_format_options(const nlohmann::json& options) {
-    if (!options.is_object()) {
-        throw config_error{"'format_options' member must be an object."};
-    }
-    for (const auto &item : options.items()) {
-        const auto type = item.value().type();
-        const auto &key = item.key();
-        switch (type) {
-            case nlohmann::json::value_t::null:
-                m_options.format_options.set(key, false);
-                break;
-            case nlohmann::json::value_t::boolean:
-                m_options.format_options.set(key, item.value().template get<bool>());
-                break;
-            case nlohmann::json::value_t::object:
-                throw config_error{"Option value for key '" + std::string(key) + "' can not be of type object."};
-            case nlohmann::json::value_t::array:
-                throw config_error{"Option value for key '" + std::string(key) + "' can not be an array."};
-                break;
-            case nlohmann::json::value_t::string:
-                m_options.format_options.set(key, item.value().template get<std::string>());
-                break;
-            case nlohmann::json::value_t::number_integer:
-                m_options.format_options.set(key, std::to_string(item.value().template get<int64_t>()));
-                break;
-            case nlohmann::json::value_t::number_unsigned:
-                m_options.format_options.set(key, std::to_string(item.value().template get<uint64_t>()));
-                break;
-            case nlohmann::json::value_t::number_float:
-                m_options.format_options.set(key, std::to_string(item.value().template get<double>()));
-                break;
-            default:
-                throw config_error{"Unknown type"};
-        }
-    }
-}
 
 void CommandExport::parse_config_file() {
     std::ifstream config_file{m_config_file_name};
-    nlohmann::json doc = nlohmann::json::parse(config_file);
-
-    if (!doc.is_object()) {
-        throw config_error{"Top-level value must be an object."};
+    if (!config_file) {
+        throw config_error{"Could not open config file '" + m_config_file_name + "'."};
     }
 
-    const auto json_attr = doc.find("attributes");
-    if (json_attr != doc.end()) {
-        parse_attributes(*json_attr);
+    const auto parsed = osmium_export::read_export_config(config_file);
+    if (!parsed) {
+        throw config_error{osmium_config::format_rfl_error(parsed.error())};
     }
 
-    const auto json_opts = doc.find("format_options");
-    if (json_opts != doc.end()) {
-        parse_format_options(*json_opts);
+    const auto& cfg = *parsed;
+    const auto& attrs = cfg.attributes.value();
+
+    m_options.type      = resolve_attr_string(attrs.type.value(),      "type");
+    m_options.id        = resolve_attr_string(attrs.id.value(),        "id");
+    m_options.version   = resolve_attr_string(attrs.version.value(),   "version");
+    m_options.changeset = resolve_attr_string(attrs.changeset.value(), "changeset");
+    m_options.timestamp = resolve_attr_string(attrs.timestamp.value(), "timestamp");
+    m_options.uid       = resolve_attr_string(attrs.uid.value(),       "uid");
+    m_options.user      = resolve_attr_string(attrs.user.value(),      "user");
+    m_options.way_nodes = resolve_attr_string(attrs.way_nodes.value(), "way_nodes");
+
+    for (const auto& [key, opt_val] : cfg.format_options.value()) {
+        if (!opt_val) {
+            m_options.format_options.set(key, false);
+            continue;
+        }
+        std::visit(
+            [&](const auto& v) {
+                using V = std::decay_t<decltype(v)>;
+                if constexpr (std::is_same_v<V, bool>) {
+                    m_options.format_options.set(key, v);
+                } else if constexpr (std::is_same_v<V, std::string>) {
+                    m_options.format_options.set(key, v);
+                } else {
+                    m_options.format_options.set(key, std::to_string(v));
+                }
+            },
+            *opt_val);
     }
 
-    m_linear_ruleset = parse_tags_ruleset(doc, "linear_tags");
-    m_area_ruleset   = parse_tags_ruleset(doc, "area_tags");
+    m_linear_ruleset = build_tags_ruleset(cfg.linear_tags.value());
+    m_area_ruleset   = build_tags_ruleset(cfg.area_tags.value());
 
     if (m_linear_ruleset.rule_type() == tags_filter_rule_type::other &&
         m_area_ruleset.rule_type() == tags_filter_rule_type::other) {
@@ -223,8 +154,17 @@ void CommandExport::parse_config_file() {
         m_area_ruleset.set_rule_type(tags_filter_rule_type::any);
     }
 
-    parse_string_array(doc, "include_tags", &m_include_tags);
-    parse_string_array(doc, "exclude_tags", &m_exclude_tags);
+    for (const auto& str : cfg.include_tags.value()) {
+        if (!str.empty()) {
+            m_include_tags.emplace_back(str);
+        }
+    }
+
+    for (const auto& str : cfg.exclude_tags.value()) {
+        if (!str.empty()) {
+            m_exclude_tags.emplace_back(str);
+        }
+    }
 }
 
 void CommandExport::canonicalize_output_format() {
@@ -262,6 +202,7 @@ struct ExportOptions {
     osmium_cli::CmdShortOpt<"f", "Output format (default depends on output file suffix)", osmium_cli::OptStr> output_format;
     osmium_cli::CmdShortOpt<"O", "Allow existing output file to be overwritten", osmium_cli::Flag> overwrite = false;
     osmium_cli::CmdShortOpt<"C", "Print default config on STDOUT", osmium_cli::Flag> print_default_config = false;
+    osmium_cli::CmdOpt<"Print JSON Schema for export config on STDOUT", osmium_cli::Flag> print_config_schema = false;
     osmium_cli::CmdShortOpt<"e", "Output any geometry errors on STDOUT", osmium_cli::Flag> show_errors = false;
     osmium_cli::CmdShortOpt<"E", "Stop on the first error encountered", osmium_cli::Flag> stop_on_error = false;
     osmium_cli::CmdShortOpt<"I", "Show available index types", osmium_cli::Flag> show_index_types = false;
@@ -280,25 +221,12 @@ bool CommandExport::setup(const std::vector<std::string>& arguments) {
     }
 
     if (rfl::unwrap(opts->print_default_config)) {
-        std::cout << R"({
-    "attributes": {
-        "type":      false,
-        "id":        false,
-        "version":   false,
-        "changeset": false,
-        "timestamp": false,
-        "uid":       false,
-        "user":      false,
-        "way_nodes": false
-    },
-    "format_options": {
-    },
-    "linear_tags":  true,
-    "area_tags":    true,
-    "exclude_tags": [],
-    "include_tags": []
-}
-)";
+        std::cout << osmium_export::default_export_config_json();
+        return false;
+    }
+
+    if (rfl::unwrap(opts->print_config_schema)) {
+        std::cout << osmium_export::export_config_schema_json() << '\n';
         return false;
     }
 
@@ -351,10 +279,6 @@ bool CommandExport::setup(const std::vector<std::string>& arguments) {
 
         try {
             parse_config_file();
-        } catch (const nlohmann::json::parse_error& e) {
-            std::cerr << "Error while reading config file '" << m_config_file_name << "':\n";
-            throw config_error{std::string{"JSON error at offset "} +
-                               std::to_string(e.byte) + ": " + e.what()};
         } catch (const config_error&) {
             std::cerr << "Error while reading config file '" << m_config_file_name << "':\n";
             throw;

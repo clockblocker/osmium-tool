@@ -22,11 +22,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "command_extract.hpp"
 
+#include "config_util.hpp"
 #include "exception.hpp"
 
+#include "extract/config.hpp"
 #include "extract/extract_bbox.hpp"
 #include "extract/extract_polygon.hpp"
 #include "extract/geojson_file_parser.hpp"
+#include "extract/geometry_util.hpp"
 #include "extract/osm_file_parser.hpp"
 #include "extract/poly_file_parser.hpp"
 #include "extract/strategy_complete_ways.hpp"
@@ -35,6 +38,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "extract/strategy_smart.hpp"
 #include "util.hpp"
 
+#include <osmium/builder/osm_object_builder.hpp>
 #include <osmium/geom/coordinates.hpp>
 #include <osmium/handler/check_order.hpp>
 #include <osmium/io/any_input.hpp>
@@ -46,8 +50,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <osmium/util/string.hpp>
 #include <osmium/util/verbose_output.hpp>
 
-#include <nlohmann/json.hpp>
-
+#include <algorithm>
+#include <array>
+#include <cassert>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -57,6 +62,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <system_error>
+#include <variant>
 #include <vector>
 
 #ifdef _WIN32
@@ -74,20 +80,12 @@ namespace {
 
 constexpr const std::size_t max_extracts = 500;
 
-osmium::Box parse_bbox(const nlohmann::json& value) {
-    if (value.is_array()) {
-        if (value.size() != 4) {
-            throw config_error{"'bbox' must be an array with exactly four elements."};
-        }
-
-        if (!value[0].is_number() || !value[1].is_number() || !value[2].is_number() || !value[3].is_number()) {
-            throw config_error{"'bbox' array elements must be numbers."};
-        }
-
-        const auto value0 = value[0].template get<double>();
-        const auto value1 = value[1].template get<double>();
-        const auto value2 = value[2].template get<double>();
-        const auto value3 = value[3].template get<double>();
+osmium::Box parse_bbox(const osmium_extract::BBoxSpec& spec) {
+    if (const auto* arr = std::get_if<std::array<double, 4>>(&spec)) {
+        const auto value0 = (*arr)[0];
+        const auto value1 = (*arr)[1];
+        const auto value2 = (*arr)[2];
+        const auto value3 = (*arr)[3];
 
         if (value0 < -180.0 || value0 > 180.0) {
             throw config_error{"Invalid coordinate in bbox: " + std::to_string(value0) + "."};
@@ -115,56 +113,16 @@ osmium::Box parse_bbox(const nlohmann::json& value) {
         return box;
     }
 
-    if (value.is_object()) {
-        const auto left   = value.find("left");
-        const auto right  = value.find("right");
-        const auto top    = value.find("top");
-        const auto bottom = value.find("bottom");
+    const auto& obj = std::get<osmium_extract::BBoxObject>(spec);
+    const osmium::Location bottom_left{obj.left.value().value(), obj.bottom.value().value()};
+    const osmium::Location top_right{obj.right.value().value(), obj.top.value().value()};
 
-        if (left != value.end() && right  != value.end() &&
-            top  != value.end() && bottom != value.end()) {
-            if (left->is_number() && right->is_number() &&
-                top->is_number()  && bottom->is_number()) {
-
-                const auto left_value   = left->template get<double>();
-                const auto right_value  = right->template get<double>();
-                const auto top_value    = top->template get<double>();
-                const auto bottom_value = bottom->template get<double>();
-
-                if (left_value < -180.0 || left_value > 180.0) {
-                    throw config_error{"Invalid coordinate in bbox: " + std::to_string(left_value) + "."};
-                }
-
-                if (right_value < -180.0 || right_value > 180.0) {
-                    throw config_error{"Invalid coordinate in bbox: " + std::to_string(right_value) + "."};
-                }
-
-                if (top_value < -90.0 || top_value > 90.0) {
-                    throw config_error{"Invalid coordinate in bbox: " + std::to_string(top_value) + "."};
-                }
-
-                if (bottom_value < -90.0 || bottom_value > 90.0) {
-                    throw config_error{"Invalid coordinate in bbox: " + std::to_string(bottom_value) + "."};
-                }
-
-                const osmium::Location bottom_left{left_value, bottom_value};
-                const osmium::Location top_right{right_value, top_value};
-
-                if (bottom_left.x() < top_right.x() &&
-                    bottom_left.y() < top_right.y()) {
-                    return osmium::Box{bottom_left, top_right};
-                }
-
-                throw config_error{"Need 'left' < 'right' and 'bottom' < 'top' in 'bbox' object."};
-            }
-
-            throw config_error{"Members in 'bbox' object must be numbers."};
-        }
-
-        throw config_error{"Need 'left', 'right', 'top', and 'bottom' members in 'bbox' object."};
+    if (bottom_left.x() < top_right.x() &&
+        bottom_left.y() < top_right.y()) {
+        return osmium::Box{bottom_left, top_right};
     }
 
-    throw config_error{"'bbox' member is not an array or object."};
+    throw config_error{"Need 'left' < 'right' and 'bottom' < 'top' in 'bbox' object."};
 }
 
 #ifdef _WIN32
@@ -242,40 +200,103 @@ std::size_t parse_multipolygon_object(const std::string& directory, std::string 
     throw config_error{std::string{"Unknown file type: '"} + file_type + "' in '(multi)polygon.file_type'"};
 }
 
-std::size_t parse_multipolygon_object(const std::string& directory, const nlohmann::json& value, osmium::memory::Buffer* buffer) {
-    assert(buffer);
-
-    const std::string file_name{get_value_as_string(value, "file_name")};
-    const std::string file_type{get_value_as_string(value, "file_type")};
-    return parse_multipolygon_object(directory, file_name, file_type, buffer);
+std::vector<osmium::geom::Coordinates> ring_to_coordinates(const osmium_extract::Ring& ring) {
+    std::vector<osmium::geom::Coordinates> coordinates;
+    coordinates.reserve(ring.value().size());
+    for (const auto& pt : ring.value()) {
+        coordinates.emplace_back(pt[0], pt[1]);
+    }
+    return coordinates;
 }
 
-std::size_t parse_polygon(const std::string& directory, const nlohmann::json& value, osmium::memory::Buffer* buffer) {
-    assert(buffer);
+void add_inline_rings(const osmium_extract::InlinePolygon& polygon, osmium::builder::AreaBuilder* builder) {
+    const auto& rings = polygon.value();
 
-    if (value.is_array()) {
-        return parse_polygon_array(value, buffer);
+    {
+        auto outer_ring = ring_to_coordinates(rings[0]);
+        if (!is_ccw(outer_ring)) {
+            std::reverse(outer_ring.begin(), outer_ring.end());
+        }
+        osmium::builder::OuterRingBuilder ring_builder{*builder};
+        for (const auto& c : outer_ring) {
+            const osmium::Location loc{c.x, c.y};
+            if (loc.valid()) {
+                ring_builder.add_node_ref(0, loc);
+            } else {
+                throw config_error{"Invalid location in boundary (multi)polygon: (" +
+                                   std::to_string(c.x) +
+                                   ", " +
+                                   std::to_string(c.y) + ")."};
+            }
+        }
     }
 
-    if (value.is_object()) {
-        return parse_multipolygon_object(directory, value, buffer);
+    for (std::size_t i = 1; i < rings.size(); ++i) {
+        auto inner_ring = ring_to_coordinates(rings[i]);
+        if (is_ccw(inner_ring)) {
+            std::reverse(inner_ring.begin(), inner_ring.end());
+        }
+        osmium::builder::InnerRingBuilder ring_builder{*builder};
+        for (const auto& c : inner_ring) {
+            const osmium::Location loc{c.x, c.y};
+            if (loc.valid()) {
+                ring_builder.add_node_ref(0, loc);
+            } else {
+                throw config_error{"Invalid location in boundary (multi)polygon: (" +
+                                   std::to_string(c.x) +
+                                   ", " +
+                                   std::to_string(c.y) + ")."};
+            }
+        }
     }
-
-    throw config_error{"Polygon must be an object or array."};
 }
 
-std::size_t parse_multipolygon(const std::string& directory, const nlohmann::json& value, osmium::memory::Buffer* buffer) {
+std::size_t build_inline_polygon(const osmium_extract::InlinePolygon& polygon, osmium::memory::Buffer* buffer) {
+    {
+        osmium::builder::AreaBuilder builder{*buffer};
+        add_inline_rings(polygon, &builder);
+    }
+
+    return buffer->commit();
+}
+
+std::size_t build_inline_multipolygon(const osmium_extract::InlineMultiPolygon& multipolygon, osmium::memory::Buffer* buffer) {
+    {
+        osmium::builder::AreaBuilder builder{*buffer};
+        for (const auto& polygon : multipolygon.value()) {
+            add_inline_rings(polygon, &builder);
+        }
+    }
+
+    return buffer->commit();
+}
+
+std::size_t parse_polygon(const std::string& directory, const osmium_extract::PolygonSpec& value, osmium::memory::Buffer* buffer) {
     assert(buffer);
 
-    if (value.is_array()) {
-        return parse_multipolygon_array(value, buffer);
+    if (const auto* inline_poly = std::get_if<osmium_extract::InlinePolygon>(&value)) {
+        return build_inline_polygon(*inline_poly, buffer);
     }
 
-    if (value.is_object()) {
-        return parse_multipolygon_object(directory, value, buffer);
+    const auto& file_spec = std::get<osmium_extract::PolygonFileSpec>(value);
+    return parse_multipolygon_object(directory,
+                                     file_spec.file_name.value(),
+                                     file_spec.file_type.value().value_or(""),
+                                     buffer);
+}
+
+std::size_t parse_multipolygon(const std::string& directory, const osmium_extract::MultiPolygonSpec& value, osmium::memory::Buffer* buffer) {
+    assert(buffer);
+
+    if (const auto* inline_mp = std::get_if<osmium_extract::InlineMultiPolygon>(&value)) {
+        return build_inline_multipolygon(*inline_mp, buffer);
     }
 
-    throw config_error{"Multipolygon must be an object or array."};
+    const auto& file_spec = std::get<osmium_extract::PolygonFileSpec>(value);
+    return parse_multipolygon_object(directory,
+                                     file_spec.file_name.value(),
+                                     file_spec.file_type.value().value_or(""),
+                                     buffer);
 }
 
 bool is_existing_directory(const char* name) {
@@ -311,49 +332,36 @@ void CommandExtract::set_directory(const std::string& directory) {
 
 void CommandExtract::parse_config_file() {
     std::ifstream config_file{m_config_file_name};
-    nlohmann::json doc = nlohmann::json::parse(config_file);
-
-    if (!doc.is_object()) {
-        throw config_error{"Top-level value must be an object."};
+    if (!config_file) {
+        throw config_error{"Could not open config file '" + m_config_file_name + "'."};
     }
 
-    const std::string directory{get_value_as_string(doc, "directory")};
-    if (!directory.empty() && m_output_directory.empty()) {
-        m_vout << "  Directory set to '" << directory << "'.\n";
-        set_directory(directory);
+    const auto parsed = osmium_extract::read_extract_config(config_file);
+    if (!parsed) {
+        throw config_error{osmium_config::format_rfl_error(parsed.error())};
     }
 
-    const auto json_extracts = doc.find("extracts");
-    if (json_extracts == doc.end()) {
-        throw config_error{"Missing 'extracts' member in top-level object."};
-    }
+    const auto& doc = *parsed;
 
-    if (!json_extracts->is_array()) {
-        throw config_error{"'extracts' member in top-level object must be array."};
+    if (const auto& directory = doc.directory.value(); directory && !directory->empty() && m_output_directory.empty()) {
+        m_vout << "  Directory set to '" << *directory << "'.\n";
+        set_directory(*directory);
     }
 
     m_vout << "  Reading extracts from config file...\n";
     int extract_num = 1;
-    for (const auto& item : *json_extracts) {
+    for (const auto& item : doc.extracts.value()) {
         std::string output;
         try {
-            if (!item.is_object()) {
-                throw config_error{"Members in 'extracts' array must be objects."};
-            }
-
-            output = get_value_as_string(item, "output");
+            output = item.output.value();
             if (output.empty()) {
                 throw config_error{"Missing 'output' field for extract."};
             }
 
             m_vout << "    Looking at extract '" << output << "'...\n";
 
-            const std::string output_format{get_value_as_string(item, "output_format")};
-            const std::string description{get_value_as_string(item, "description")};
-
-            const auto json_bbox         = item.find("bbox");
-            const auto json_polygon      = item.find("polygon");
-            const auto json_multipolygon = item.find("multipolygon");
+            const std::string output_format{item.output_format.value().value_or("")};
+            const std::string description{item.description.value().value_or("")};
 
             osmium::io::File output_file{m_output_directory + output, output_format};
             if (m_with_history) {
@@ -362,30 +370,23 @@ void CommandExtract::parse_config_file() {
                 throw config_error{"Looks like you are trying to write a history file, but option --with-history is not set."};
             }
 
-            if (json_bbox != item.end()) {
-                m_extracts.push_back(std::make_unique<ExtractBBox>(output_file, description, parse_bbox(*json_bbox)));
-            } else if (json_polygon != item.end()) {
-                m_extracts.push_back(std::make_unique<ExtractPolygon>(output_file, description, m_buffer, parse_polygon(m_config_directory, *json_polygon, &m_buffer)));
-            } else if (json_multipolygon != item.end()) {
-                m_extracts.push_back(std::make_unique<ExtractPolygon>(output_file, description, m_buffer, parse_multipolygon(m_config_directory, *json_multipolygon, &m_buffer)));
+            if (const auto& bbox = item.bbox.value()) {
+                m_extracts.push_back(std::make_unique<ExtractBBox>(output_file, description, parse_bbox(*bbox)));
+            } else if (const auto& polygon = item.polygon.value()) {
+                m_extracts.push_back(std::make_unique<ExtractPolygon>(output_file, description, m_buffer, parse_polygon(m_config_directory, *polygon, &m_buffer)));
+            } else if (const auto& multipolygon = item.multipolygon.value()) {
+                m_extracts.push_back(std::make_unique<ExtractPolygon>(output_file, description, m_buffer, parse_multipolygon(m_config_directory, *multipolygon, &m_buffer)));
             } else {
                 throw config_error{"Missing geometry for extract. Need 'bbox', 'polygon', or 'multipolygon'."};
             }
 
-            const auto json_output_header = item.find("output_header");
-            if (json_output_header != item.end()) {
-                if (!json_output_header->is_object()) {
-                    throw config_error{"Optional 'output_header' field must be an object."};
-                }
+            if (const auto& output_header = item.output_header.value()) {
                 Extract& extract = *m_extracts.back();
-                for (auto const& header_item : json_output_header->items()) {
-                    if (header_item.value().is_null()) {
-                        extract.add_header_option(header_item.key());
+                for (const auto& [key, val] : *output_header) {
+                    if (!val) {
+                        extract.add_header_option(key);
                     } else {
-                        if (!header_item.value().is_string()) {
-                            throw config_error{"Values in 'output_header' object must be strings or null."};
-                        }
-                        extract.add_header_option(header_item.key(), header_item.value().template get<std::string>());
+                        extract.add_header_option(key, *val);
                     }
                 }
             }
@@ -450,6 +451,7 @@ struct ExtractOptions {
     osmium_cli::CmdShortOpt<"d", "Output directory (default: from config)", osmium_cli::OptStr> directory;
     osmium_cli::CmdShortOpt<"S", "Set strategy option", osmium_cli::OptStrVec> option;
     osmium_cli::CmdShortOpt<"p", "Polygon file", osmium_cli::OptStr> polygon;
+    osmium_cli::CmdOpt<"Print JSON Schema for extract config on STDOUT", osmium_cli::Flag> print_config_schema = false;
     osmium_cli::CmdShortOpt<"s", "Use named extract strategy", rfl::DefaultVal<std::string>> strategy = "complete_ways";
     osmium_cli::CmdShortOpt<"H", "Input file and output files are history files", osmium_cli::Flag> with_history = false;
     osmium_cli::CmdOpt<"Sets bounds (bounding box) in header", osmium_cli::Flag> set_bounds = false;
@@ -465,6 +467,11 @@ struct ExtractOptions {
 bool CommandExtract::setup(const std::vector<std::string>& arguments) {
     const auto opts = parse_options<ExtractOptions>(arguments);
     if (!opts) {
+        return false;
+    }
+
+    if (rfl::unwrap(opts->print_config_schema)) {
+        std::cout << osmium_extract::extract_config_schema_json() << '\n';
         return false;
     }
 
@@ -593,10 +600,6 @@ bool CommandExtract::run() {
         m_vout << "Reading config file...\n";
         try {
             parse_config_file();
-        } catch (const nlohmann::json::parse_error &e) {
-            throw geojson_error{std::string{"In file '"} + m_config_file_name +
-                  "':\nJSON error at offset " + std::to_string(e.byte) +
-                  " : " + e.what()};
         } catch (const config_error&) {
             std::cerr << "Error while reading config file '" << m_config_file_name << "':\n";
             throw;
